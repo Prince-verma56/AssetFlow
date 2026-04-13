@@ -9,7 +9,7 @@ function TrackShipmentsPageContent() {
 
   useEffect(() => {
     const orderId = params.get("orderId");
-    router.replace(orderId ? `/marketplace/orders?orderId=${orderId}` : "/marketplace/orders");
+    router.replace(orderId ? `/renter/tracking?orderId=${orderId}` : "/renter/tracking");
   }, [router, params]);
 
   return null;

@@ -1,30 +1,25 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { addDays, differenceInCalendarDays, format } from "date-fns";
-import { CalendarIcon, ShieldCheck } from "lucide-react";
+import { CalendarIcon, ShieldCheck, Sparkles, Star } from "lucide-react";
 import { toast } from "sonner";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { useRazorpay } from "@/hooks/use-razorpay";
 import { buildInvoiceUrl } from "@/lib/invoices";
+import { processOrderCommunication } from "@/app/actions/order-communication";
 import type { MarketplaceListing } from "./listing-types";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { AiMarketBrief } from "@/components/shared/ai-market-brief";
 import { cn } from "@/lib/utils";
 import { type DateRange } from "react-day-picker";
 
@@ -33,6 +28,19 @@ type BookingDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
+
+function getDurationDiscountRate(days: number) {
+  if (days >= 15) return 0.2;
+  if (days >= 7) return 0.1;
+  return 0;
+}
+
+function getTenureDiscountRate(assetAge: number | null | undefined) {
+  if (!assetAge) return 0;
+  if (assetAge >= 6) return 0.15;
+  if (assetAge >= 3) return 0.05;
+  return 0;
+}
 
 export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProps) {
   const router = useRouter();
@@ -43,7 +51,8 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
     from: new Date(),
     to: addDays(new Date(), 2),
   });
-  const [damageProtection, setDamageProtection] = React.useState(true);
+  const [aiInsight, setAiInsight] = React.useState<string | null>(null);
+  const [isLoadingAi, setIsLoadingAi] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) {
@@ -51,20 +60,77 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
         from: new Date(),
         to: addDays(new Date(), 2),
       });
-      setDamageProtection(true);
+      setAiInsight(null);
     }
   }, [open]);
-
-  if (!listing) return null;
 
   const rentalStart = dateRange?.from ?? new Date();
   const rentalEnd = dateRange?.to ?? rentalStart;
   const selectedDays = Math.max(1, differenceInCalendarDays(rentalEnd, rentalStart) + 1);
-  const baseTotal = listing.pricePerDay * selectedDays;
-  const protectionTotal = damageProtection ? selectedDays * 50 : 0;
-  const total = baseTotal + protectionTotal;
-  const minDays = Math.max(1, listing.minimumRentalDays ?? 1);
+  const minDays = Math.max(1, listing?.minimumRentalDays ?? 1);
+  const assetAge = listing?.assetAge ?? null;
+  const baseTotal = (listing?.pricePerDay ?? 0) * selectedDays;
+  const durationDiscountRate = getDurationDiscountRate(selectedDays);
+  const tenureDiscountRate = getTenureDiscountRate(assetAge);
+  const durationDiscount = baseTotal * durationDiscountRate;
+  const tenureDiscount = Math.max(0, (baseTotal - durationDiscount) * tenureDiscountRate);
+  const escrowFee = Math.max(49, Math.round(baseTotal * 0.025));
+  const total = Math.max(0, baseTotal - durationDiscount - tenureDiscount + escrowFee);
+  const dynamicPriceApplied = durationDiscountRate + tenureDiscountRate;
   const isDurationValid = selectedDays >= minDays;
+
+  const availability = useQuery(
+    api.listings.getBookingAvailability,
+    listing
+      ? {
+          listingId: listing._id as Id<"listings">,
+          startDate: rentalStart.getTime(),
+          endDate: rentalEnd.getTime(),
+        }
+      : "skip",
+  );
+
+  const availableStock = availability?.success
+    ? availability.data.availableStock
+    : listing?.availableStock ?? listing?.stockQuantity ?? 1;
+  const isStockAvailable = availableStock > 0;
+
+  React.useEffect(() => {
+    if (!listing || !dateRange?.from || !dateRange?.to) return;
+
+    const generatePricingInsight = async () => {
+      setIsLoadingAi(true);
+      try {
+        const response = await fetch("/api/ai/market-intelligence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "renter",
+            assetName: listing.title || listing.assetCategory,
+            days: selectedDays,
+            dynamicDiscount: durationDiscountRate,
+            tenureDiscount: tenureDiscountRate,
+            assetAge,
+            escrowFee,
+            totalAmount: total,
+          }),
+        });
+
+        const data = await response.json();
+        if (data.insight) {
+          setAiInsight(data.insight);
+        }
+      } catch (error) {
+        console.error("Failed to generate AI insight:", error);
+      } finally {
+        setIsLoadingAi(false);
+      }
+    };
+
+    void generatePricingInsight();
+  }, [assetAge, dateRange, durationDiscountRate, escrowFee, listing, selectedDays, tenureDiscountRate, total]);
+
+  if (!listing) return null;
 
   const handleCheckout = async () => {
     if (!user?.id || !user.primaryEmailAddress?.emailAddress) {
@@ -74,6 +140,11 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
 
     if (!isDurationValid) {
       toast.error(`Minimum booking is ${minDays} day${minDays === 1 ? "" : "s"}.`);
+      return;
+    }
+
+    if (!isStockAvailable) {
+      toast.error("This equipment is not available for the selected dates.");
       return;
     }
 
@@ -92,6 +163,9 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
           name: user.fullName || "Renter",
           email: user.primaryEmailAddress.emailAddress,
         },
+        dynamicPriceApplied,
+        rentalStartDate: rentalStart.getTime(),
+        rentalEndDate: rentalEnd.getTime(),
       });
 
       const orderId = String(result.data.orderId);
@@ -108,19 +182,27 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
         invoiceUrl,
       });
 
-      await fetch("/api/send-invoice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId,
-          invoiceUrl,
-          renterEmail: user.primaryEmailAddress.emailAddress,
-          renterName: user.fullName || "Renter",
-          itemName: listing.title || listing.assetCategory,
-          rentalStart: rentalStart.toISOString(),
-          rentalEnd: rentalEnd.toISOString(),
-          totalAmount: total,
-        }),
+      await processOrderCommunication({
+        renterEmail: user.primaryEmailAddress.emailAddress,
+        renterName: user.fullName || "Renter",
+        ownerEmail: listing.ownerEmail || process.env.NEXT_PUBLIC_DEFAULT_OWNER_EMAIL || user.primaryEmailAddress.emailAddress,
+        ownerName: listing.ownerName || "Equipment Owner",
+        assetCategory: listing.title || listing.assetCategory,
+        amount: total,
+        orderId,
+        paymentId: String(result.data.paymentId),
+        gatewayOrderId: "-",
+        quantity: `${selectedDays} days`,
+        unitPricePerKg: listing.pricePerDay,
+        unitLabel: "day",
+        sourceLocation: listing.location,
+        deliveryAddress: {
+          street: listing.location,
+          city: listing.location.split(",")[0]?.trim() || "Unknown City",
+          state: listing.location.split(",")[1]?.trim() || "Unknown State",
+          pincode: "000000",
+        },
+        productImageUrl: listing.imageUrl,
       });
 
       toast.success("Payment secured in escrow.");
@@ -135,98 +217,188 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl rounded-[2rem] border-zinc-200 bg-white shadow-2xl dark:border-border dark:bg-card">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-black">Book {listing.title || listing.assetCategory}</DialogTitle>
-          <DialogDescription>
-            Choose your rental period and we&apos;ll hold the payment securely in escrow until return is confirmed.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-5xl rounded-[2rem] border-zinc-200 bg-[#f6f5f1] p-0 shadow-2xl">
+        <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-5 border-b border-zinc-200 bg-white p-6 lg:border-b-0 lg:border-r">
+            <DialogHeader className="space-y-2 text-left">
+              <DialogTitle className="text-2xl font-black text-zinc-950">Confirm Your Rental</DialogTitle>
+              <DialogDescription className="text-sm text-zinc-600">
+                Review product trust, owner reliability, and the booking window before secure payment.
+              </DialogDescription>
+            </DialogHeader>
 
-        <div className="space-y-5">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 dark:border-border dark:bg-muted/40">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-zinc-900 dark:text-foreground">{listing.location}</p>
-                <p className="text-sm text-zinc-500 dark:text-muted-foreground">
-                  ₹{listing.pricePerDay.toFixed(0)} per day
+            <div className="overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-zinc-50">
+              <div className="relative aspect-[4/3]">
+                {listing.imageUrl ? (
+                  <Image src={listing.imageUrl} alt={listing.title || listing.assetCategory} fill className="object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-zinc-100 text-sm font-medium text-zinc-500">
+                    No image available
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-black text-zinc-950">{listing.title || listing.assetCategory}</p>
+                    <p className="text-sm text-zinc-500">{listing.location}</p>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                    ₹{listing.pricePerDay.toFixed(0)}/day
+                  </Badge>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Product Score</p>
+                    <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                      <Star className="size-4 text-amber-500" />
+                      Successfully rented {listing.totalRentals ?? listing.lifetimeRentals ?? 0} times
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Asset Tenure</p>
+                    <p className="mt-2 text-sm font-semibold text-zinc-900">
+                      {assetAge !== null ? `${assetAge} years old` : "Year not added yet"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-zinc-200 bg-[#f8f7f4] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Owner Trust</p>
+                  <p className="mt-1 text-lg font-black text-zinc-950">{listing.ownerName || "Equipment Owner"}</p>
+                  <p className="text-sm text-zinc-600">
+                    Trust Score: {listing.ownerTrustScore ?? 78}% based on completed rentals and followers
+                  </p>
+                </div>
+                <div className="text-right text-sm text-zinc-600">
+                  <p>{listing.ownerLifetimeCompletedOrders ?? 0}+ completed rentals</p>
+                  <p>{listing.ownerFollowerCount ?? 0} followers</p>
+                </div>
+              </div>
+            </div>
+
+            {aiInsight && !isLoadingAi ? <AiMarketBrief insight={aiInsight} variant="renter" /> : null}
+            {isLoadingAi ? (
+              <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                <Sparkles className="size-4 animate-pulse" />
+                Generating the smart pricing summary...
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-5 p-6">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-zinc-800">Rental Date Range</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-12 w-full justify-start rounded-xl border-zinc-200 bg-white text-left font-medium text-zinc-900",
+                      !dateRange?.from && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 size-4" />
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
+                      ) : (
+                        format(dateRange.from, "dd MMM yyyy")
+                      )
+                    ) : (
+                      "Pick rental dates"
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-zinc-500">Minimum rental: {minDays} day{minDays === 1 ? "" : "s"}</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Availability</p>
+                <p className="mt-2 text-lg font-black text-zinc-950">
+                  {isStockAvailable ? `${availableStock} unit${availableStock === 1 ? "" : "s"} open` : "Sold out"}
+                </p>
+                <p className="mt-1 text-sm text-zinc-600">
+                  {isStockAvailable
+                    ? "Your selected dates still have available inventory."
+                    : listing.nearestEndDate
+                      ? `Available again around ${format(new Date(listing.nearestEndDate), "dd MMM yyyy")}.`
+                      : "Try a different date range."}
                 </p>
               </div>
-              {listing.qualityScore ? <Badge>{listing.qualityScore} Quality</Badge> : null}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-semibold">Rental Dates</p>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "h-12 w-full justify-start rounded-xl border-zinc-200 bg-white text-left font-medium dark:border-border dark:bg-background",
-                    !dateRange?.from && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 size-4" />
-                  {dateRange?.from ? (
-                    dateRange.to ? (
-                      `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`
-                    ) : (
-                      format(dateRange.from, "LLL dd, y")
-                    )
-                  ) : (
-                    "Pick rental dates"
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="range"
-                  selected={dateRange}
-                  onSelect={setDateRange}
-                  numberOfMonths={2}
-                  disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                />
-              </PopoverContent>
-            </Popover>
-            <p className="text-xs text-muted-foreground">Minimum rental: {minDays} day{minDays === 1 ? "" : "s"}</p>
-          </div>
-
-          <label className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 dark:border-border dark:bg-muted/40">
-            <div className="flex items-center gap-3">
-              <Checkbox checked={damageProtection} onCheckedChange={(value) => setDamageProtection(Boolean(value))} />
-              <div>
-                <p className="text-sm font-semibold">Add Damage Protection</p>
-                <p className="text-xs text-muted-foreground">+₹50/day for wear-and-tear coverage</p>
+              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Escrow Protection</p>
+                <p className="mt-2 flex items-center gap-2 text-lg font-black text-zinc-950">
+                  <ShieldCheck className="size-5 text-emerald-600" />
+                  Funds held safely
+                </p>
+                <p className="mt-1 text-sm text-zinc-600">
+                  The owner is paid only after return confirmation.
+                </p>
               </div>
             </div>
-            <ShieldCheck className="size-5 text-emerald-600" />
-          </label>
 
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Base rental</span>
-              <span>₹{baseTotal.toFixed(0)}</span>
+            <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-5">
+              <p className="text-sm font-semibold text-zinc-800">Price Breakdown</p>
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-500">Base Rate</span>
+                  <span className="font-medium">₹{listing.pricePerDay.toFixed(0)} x {selectedDays} days = ₹{baseTotal.toFixed(0)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-500">Long-Term Discount</span>
+                  <span className={durationDiscount > 0 ? "font-semibold text-emerald-700" : "text-zinc-400"}>
+                    {durationDiscount > 0 ? `-₹${durationDiscount.toFixed(0)}` : "Not applied"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-500">Age / Tenure Discount</span>
+                  <span className={tenureDiscount > 0 ? "font-semibold text-emerald-700" : "text-zinc-400"}>
+                    {tenureDiscount > 0 ? `-₹${tenureDiscount.toFixed(0)}` : "Not applied"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-500">Escrow Fee</span>
+                  <span className="font-medium">₹{escrowFee.toFixed(0)}</span>
+                </div>
+                <div className="border-t border-zinc-200 pt-3">
+                  <div className="flex items-center justify-between text-base font-black text-zinc-950">
+                    <span>Final Escrow Total</span>
+                    <span>₹{total.toFixed(0)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Damage protection</span>
-              <span>₹{protectionTotal.toFixed(0)}</span>
-            </div>
-            <div className="mt-4 flex items-center justify-between border-t border-emerald-200 pt-4 text-base font-black dark:border-emerald-900/40">
-              <span>Total for {selectedDays} day{selectedDays === 1 ? "" : "s"}</span>
-              <span>₹{total.toFixed(0)}</span>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button variant="outline" className="h-12 flex-1 rounded-xl" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="h-12 flex-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
+                disabled={!isDurationValid || !isStockAvailable || isProcessing}
+                onClick={() => void handleCheckout()}
+              >
+                Proceed to Secure Payment
+              </Button>
             </div>
           </div>
         </div>
-
-        <DialogFooter className="gap-3 sm:justify-between">
-          <Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700" disabled={!isDurationValid || isProcessing} onClick={handleCheckout}>
-            Pay ₹{total.toFixed(0)}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -8,7 +8,8 @@ import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { navConfig } from "@/config/nav.config";
-import { roleLabel, roleToDashboard, toClerkRole, toConvexRole, type ClerkRole, type ConvexRole } from "@/lib/roles";
+import { normalizeRole, roleLabel, roleToDashboard, toClerkRole, toConvexRole, type ClerkRole, type ConvexRole } from "@/lib/roles";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -44,14 +45,19 @@ export function AppSidebar() {
     api.users.getRoleByClerkId,
     isSignedIn && user?.id ? { clerkId: user.id } : "skip"
   );
+  const clerkRole = normalizeRole(user?.publicMetadata?.role);
 
   useEffect(() => {
+    if (clerkRole) {
+      setRole(toConvexRole(clerkRole));
+      return;
+    }
     if (convexUser?.role === "farmer" || convexUser?.role === "buyer") {
       setRole(convexUser.role);
       return;
     }
     setRole(pathname.startsWith("/marketplace") || pathname.startsWith("/renter") ? "buyer" : "farmer");
-  }, [pathname, convexUser]);
+  }, [pathname, convexUser, clerkRole]);
 
   const isFarmer = role === "farmer";
   const currentWorkspaceLabel = roleLabel(toClerkRole(role));
@@ -98,22 +104,37 @@ export function AppSidebar() {
     setTargetRole(nextConvexRole);
     setSwitchingRole(true);
     try {
+      // 1. Update Convex
       const result = await toggleRole({
         clerkId: user.id,
         targetRole: nextConvexRole,
       });
       if (!result.success) throw new Error(result.error || "Role update failed");
 
-      // Sync Clerk publicMetadata for proxy/session consistency.
-      await fetch("/api/me/role", {
+      // 2. Sync Clerk publicMetadata for proxy/session consistency
+      const response = await fetch("/api/me/role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: nextRole }),
       });
 
+      if (!response.ok) {
+        throw new Error("Failed to update role in Clerk");
+      }
+
+      // 3. Wait for cookies to be set
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // 4. Update local state and navigate
       setRole(nextConvexRole);
       router.push(roleToDashboard(nextRole));
       router.refresh();
+
+      // 5. Wait for navigation to complete
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error("Role switch error:", error);
+      toast.error("Failed to switch role. Please try again.");
     } finally {
       setSwitchingRole(false);
     }

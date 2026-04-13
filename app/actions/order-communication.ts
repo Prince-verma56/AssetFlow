@@ -15,6 +15,7 @@ export async function processOrderCommunication({
   gatewayOrderId,
   quantity,
   unitPricePerKg,
+  unitLabel,
   sourceLocation,
   deliveryAddress,
   productImageUrl,
@@ -30,6 +31,7 @@ export async function processOrderCommunication({
   gatewayOrderId: string;
   quantity: string;
   unitPricePerKg: number;
+  unitLabel?: string;
   sourceLocation: string;
   deliveryAddress: {
     street: string;
@@ -40,16 +42,18 @@ export async function processOrderCommunication({
   productImageUrl?: string;
 }) {
   try {
+    console.log(`[OrderCommunication] Sending emails for order ${orderId}`);
     const invoiceDate = new Date().toISOString();
     const resolvedProductImage = productImageUrl || getCropImage(assetCategory);
 
-    await sendBuyerReceiptEmail({
+    const buyerResult = await sendBuyerReceiptEmail({
       buyerName: renterName,
       buyerEmail: renterEmail,
       crop: assetCategory,
       amount,
       quantity,
       unitPricePerKg,
+      unitLabel,
       orderId,
       paymentId,
       gatewayOrderId,
@@ -61,7 +65,7 @@ export async function processOrderCommunication({
       invoiceDateIso: invoiceDate,
     });
 
-    await sendFarmerSaleAlert({
+    const farmerResult = await sendFarmerSaleAlert({
       farmerEmail: ownerEmail,
       buyerName: renterName,
       farmerName: ownerName,
@@ -71,9 +75,16 @@ export async function processOrderCommunication({
       sourceLocation,
     });
 
-    return { success: true };
+    console.log("[OrderCommunication] Buyer receipt email:", buyerResult);
+    console.log("[OrderCommunication] Farmer alert email:", farmerResult);
+
+    return {
+      success: buyerResult.success && farmerResult.success,
+      buyerEmail: buyerResult,
+      farmerEmail: farmerResult,
+    };
   } catch (error) {
-    console.error(`[OrderCommunication] Failed:`, error);
+    console.error(`[OrderCommunication] Failed for order ${orderId}:`, error);
     return { success: false, error };
   }
 }

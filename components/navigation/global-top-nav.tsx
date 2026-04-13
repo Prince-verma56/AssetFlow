@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Heart, HelpCircle, MapPin, Settings, Tractor, UserRound } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Heart, HelpCircle, MapPin, Settings, Tractor, Truck, UserRound } from "lucide-react";
 import { SignOutButton, useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { normalizeRole } from "@/lib/roles";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,29 +36,34 @@ function initials(name: string) {
 }
 
 export function GlobalTopNav() {
+  const pathname = usePathname();
   const { user, isSignedIn } = useUser();
   const profile = useQuery(api.users.getUserByClerkId, user?.id ? { clerkId: user.id } : "skip");
   const wishlistEntries = useQuery(api.wishlist.listByRenter, user?.id ? { renterId: user.id } : "skip");
 
-  const role = profile?.data?.role ?? null;
+  if (pathname === "/") {
+    return null;
+  }
+
+  const role = normalizeRole(profile?.data?.role) ?? null;
   const displayName = profile?.data?.name ?? user?.fullName ?? "Your Account";
   const avatarUrl = profile?.data?.avatarUrl ?? user?.imageUrl ?? undefined;
   const recentWishlist = (wishlistEntries ?? []).slice(0, 3);
-  const workspacePrimaryHref = role === "farmer" ? "/admin/listings" : "/renter/rentals";
-  const workspacePrimaryLabel = role === "farmer" ? "My Equipment" : "My Rentals";
-  const settingsHref = role === "farmer" ? "/admin/settings" : "/marketplace/settings";
-  const helpHref = role === "farmer" ? "/admin/help" : "/marketplace/help";
+  const workspacePrimaryHref = role === "owner" ? "/admin/listings" : "/renter/rentals";
+  const workspacePrimaryLabel = role === "owner" ? "My Equipment" : "My Rentals";
+  const settingsHref = role === "owner" ? "/admin/settings" : "/renter/settings";
+  const helpHref = role === "owner" ? "/admin/help" : "/marketplace/help";
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/90 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-3">
-          <Link href={role === "farmer" ? "/admin" : "/marketplace"} className="flex items-center gap-3">
+          <Link href={role === "owner" ? "/admin" : "/marketplace"} className="flex items-center gap-3">
             <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
               <Tractor className="size-5" />
             </span>
             <div className="hidden sm:block">
-              <p className="text-sm font-black tracking-tight">AgriRent</p>
+              <p className="text-sm font-black tracking-tight">AssetFlow</p>
               <p className="text-xs text-muted-foreground">Equipment rentals with live logistics</p>
             </div>
           </Link>
@@ -137,7 +144,7 @@ export function GlobalTopNav() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{displayName}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {role === "farmer" ? "Owner Workspace" : "Renter Workspace"}
+                          {role === "owner" ? "Owner Workspace" : "Renter Workspace"}
                         </p>
                       </div>
                     </div>
@@ -155,14 +162,21 @@ export function GlobalTopNav() {
                     </Link>
                   </DropdownMenuItem>
 
-                  {role !== "farmer" ? (
+                  {role !== "owner" ? (
                     <DropdownMenuItem asChild>
                       <Link href="/renter/saved-owners">
                         <Heart className="size-4" />
                         Saved Owners
                       </Link>
                     </DropdownMenuItem>
-                  ) : null}
+                  ) : (
+                    <DropdownMenuItem asChild>
+                      <Link href="/owner/tracking">
+                        <Truck className="size-4" />
+                        Tracking
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
 
                   <DropdownMenuItem asChild>
                     <Link href={settingsHref}>

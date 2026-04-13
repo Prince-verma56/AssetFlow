@@ -94,8 +94,10 @@ export async function GET(request: Request) {
       location: listing.location,
       ownerName: listing.farmerName,
       ownerImage: listing.farmerImage,
+      ownerEmail: listing.ownerEmail,
       quantity: listing.quantity,
       pricePerDay,
+      buyerPricePerKg: pricePerDay,
       localMandiPricePerDay: modalPricePerDay,
       trustGaugeText: modalPricePerDay > 0 
         ? `₹${pricePerDay.toFixed(2)}/day - ${belowPercent.toFixed(1)}% below Market`

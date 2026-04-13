@@ -75,6 +75,62 @@ function ensureTrackingTimeline(order: Doc<"orders">) {
   return initialTrackingTimeline();
 }
 
+async function syncListingAvailability(ctx: MutationCtx, listingId: Id<"listings">) {
+  const listing = await ctx.db.get(listingId);
+  if (!listing) return;
+
+  const orders = await ctx.db
+    .query("orders")
+    .withIndex("by_listingId", (q) => q.eq("listingId", listingId))
+    .take(200);
+
+  const activeOrders = orders.filter((order) => {
+    const status = order.orderStatus ?? "pending";
+    return status === "placed" || status === "escrow" || status === "shipped" || status === "delivered";
+  });
+
+  const nextAvailableDate =
+    activeOrders
+      .map((order) => {
+        const value = order.rentalEndDate;
+        if (typeof value === "number") return value;
+        if (typeof value === "string") {
+          const parsed = Date.parse(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      })
+      .filter((value): value is number => value !== null)
+      .sort((a, b) => a - b)[0] ?? undefined;
+
+  await ctx.db.patch(listingId, {
+    nextAvailableDate,
+    status: activeOrders.length >= Math.max(1, listing.stockQuantity ?? 1) ? "sold" : "available",
+  });
+}
+
+async function applyCompletionMetrics(ctx: MutationCtx, order: Doc<"orders">) {
+  if (order.orderStatus === "completed" || order.buyerConfirmed) {
+    return;
+  }
+
+  const listing = await ctx.db.get(order.listingId);
+  if (listing) {
+    const nextTotalRentals = (listing.totalRentals ?? 0) + 1;
+    await ctx.db.patch(listing._id, {
+      totalRentals: nextTotalRentals,
+      lifetimeRentals: (listing.lifetimeRentals ?? listing.totalRentals ?? 0) + 1,
+    });
+  }
+
+  const owner = await resolveUser(ctx, order.farmerId);
+  if (owner) {
+    await ctx.db.patch(owner._id, {
+      lifetimeCompletedOrders: (owner.lifetimeCompletedOrders ?? 0) + 1,
+    });
+  }
+}
+
 export const createOrder = mutation({
   args: {
     clerkId: v.optional(v.string()),
@@ -105,6 +161,7 @@ export const createOrder = mutation({
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
     invoiceUrl: v.optional(v.string()),
+    dynamicPriceApplied: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (args.buyerId && args.farmerId && typeof args.quantity === "number" && args.unit && args.type) {
@@ -126,6 +183,7 @@ export const createOrder = mutation({
         rentalStartDate: args.rentalStartDate,
         rentalEndDate: args.rentalEndDate,
         insuranceSelected: args.insuranceSelected,
+        dynamicPriceApplied: args.dynamicPriceApplied,
         escrowReleaseAt: Date.now() + 72 * 60 * 60 * 1000,
         deliveryAddress: args.deliveryAddress,
         createdAt: Date.now(),
@@ -133,10 +191,12 @@ export const createOrder = mutation({
         trackingTimeline: initialTrackingTimeline(),
       });
 
+      await syncListingAvailability(ctx, args.listingId);
+
       return created;
     }
 
-    if (!args.clerkId || !args.paymentId || !args.razorpayOrderId || typeof args.quantity !== "string") {
+    if (!args.clerkId || !args.paymentId || !args.razorpayOrderId || args.quantity === undefined) {
       throw new Error("Missing required fields for legacy order creation");
     }
 
@@ -151,30 +211,12 @@ export const createOrder = mutation({
     const listing = await ctx.db.get(args.listingId);
     if (!listing) throw new Error("Listing not found");
 
-    // Reduce stock slightly simply
-    const oldStockStr = String(listing.quantity || "0").replace(/[^\d.]/g, "");
-    const purStockStr = String(args.quantity || "0").replace(/[^\d.]/g, "");
-    
-    const oldStockNum = Number.parseFloat(oldStockStr);
-    const purStockNum = Number.parseFloat(purStockStr);
-    
-    if (!Number.isNaN(oldStockNum) && !Number.isNaN(purStockNum)) {
-       let newStock = oldStockNum - purStockNum;
-       if (newStock < 0) newStock = 0;
-       
-       let newStatus = listing.status;
-       if (newStock <= 0) {
-           newStatus = "sold";
-       }
-       
-       // Note: Keeping unit (e.g. quintal, kg) intact if we can, but fallback string approach for now
-       await ctx.db.patch(listing._id, {
-           quantity: String(newStock) + " " + (listing.quantity.replace(/[\d.\s]/g, "")).trim(),
-           status: newStatus
-       });
-    }
+    const parsedQuantity =
+      typeof args.quantity === "number"
+        ? args.quantity
+        : Number.parseFloat(String(args.quantity).replace(/[^\d.]/g, "")) || 0;
 
-    return await ctx.db.insert("orders", {
+    const orderId = await ctx.db.insert("orders", {
       listingId: listing._id,
       buyerId: buyer._id,
       farmerId: listing.farmerId,
@@ -187,12 +229,13 @@ export const createOrder = mutation({
       orderStatus: "placed",
       status: "escrow",
       type: "bulk",
-      quantity: Number.parseFloat(String(args.quantity).replace(/[^\d.]/g, "")) || 0,
-      unit: "kg",
+      quantity: parsedQuantity,
+      unit: args.unit || "days",
       buyerConfirmed: false,
       rentalStartDate: args.rentalStartDate,
       rentalEndDate: args.rentalEndDate,
       insuranceSelected: args.insuranceSelected,
+      dynamicPriceApplied: args.dynamicPriceApplied,
       escrowReleaseAt: Date.now() + 72 * 60 * 60 * 1000,
       createdAt: Date.now(),
       deliveryAddress: args.deliveryAddress,
@@ -200,6 +243,9 @@ export const createOrder = mutation({
       longitude: args.longitude,
       trackingTimeline: initialTrackingTimeline(),
     });
+
+    await syncListingAvailability(ctx, listing._id);
+    return orderId;
   },
 });
 
@@ -329,10 +375,16 @@ export const getFarmerOrders = query({
       results.push({ 
         ...order, 
         assetCategory: listing?.assetCategory || "Direct Rental",
+        title: listing?.title ?? listing?.assetCategory ?? "Equipment Rental",
+        imageUrl: listing?.imageUrl,
         buyerName: buyerUser?.name || "Anonymous Renter",
         buyerEmail: buyerUser?.email || "-",
         buyerPhone: buyerUser?.phone || "No Contact",
         buyerImage: buyerUser?.avatarUrl ?? buyerUser?.imageUrl,
+        renterName: buyerUser?.name || "Anonymous Renter",
+        renterEmail: buyerUser?.email || "-",
+        renterPhone: buyerUser?.phone || "No Contact",
+        renterImage: buyerUser?.avatarUrl ?? buyerUser?.imageUrl,
         trackingTimeline: ensureTrackingTimeline(order),
       });
     }
@@ -369,10 +421,15 @@ export const getOrderDetails = query({
 
       return {
         ...order,
+        listingId: order.listingId,
         assetCategory: listing?.assetCategory || "Direct Rental",
+        title: listing?.title ?? listing?.assetCategory ?? "Equipment Rental",
+        imageUrl: listing?.imageUrl,
         quantity: listing?.quantity || "Various",
         location: listing?.location || "Unknown",
         farmerName: farmerUser?.name || "Verified Owner",
+        farmerImage: farmerUser?.avatarUrl ?? farmerUser?.imageUrl,
+        invoiceUrl: order.invoiceUrl,
         farmerEmail: farmerUser?.email || "contact@agrirent.com",
         buyerName: buyerUser?.name || "Renter",
         buyerEmail: buyerUser?.email || "-",
@@ -425,6 +482,11 @@ export const updateOrderStatus = mutation({
         ),
       ],
     });
+
+    if (args.orderStatus === "completed") {
+      await applyCompletionMetrics(ctx, order);
+    }
+    await syncListingAvailability(ctx, order.listingId);
   },
 });
 
@@ -500,6 +562,9 @@ export const releaseEscrow = mutation({
         createTrackingEvent("Returned", "Rental return was confirmed and the order was completed."),
       ],
     });
+
+    await applyCompletionMetrics(ctx, order);
+    await syncListingAvailability(ctx, order.listingId);
 
     return { success: true, data: { orderId: args.orderId } } as const;
   },
@@ -689,17 +754,21 @@ export const getCrossRoleSummary = query({
 
 export const getRenterActiveRentals = query({
   args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    const orders = await ctx.runQuery(api.orders.getRenterOrdersDetailed, { clerkId: args.clerkId });
-    return orders.filter((order) => (order.orderStatus ?? "pending") !== "pending");
+  handler: async (ctx, args): Promise<Array<Record<string, unknown>>> => {
+    const orders = (await ctx.runQuery(api.orders.getRenterOrdersDetailed, {
+      clerkId: args.clerkId,
+    })) as Array<Record<string, unknown>>;
+    return orders.filter((order: Record<string, unknown>) => (order.orderStatus ?? "pending") !== "pending");
   },
 });
 
 export const getRenterTrackingOrders = query({
   args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    const orders = await ctx.runQuery(api.orders.getRenterOrdersDetailed, { clerkId: args.clerkId });
-    return orders.filter((order) => {
+  handler: async (ctx, args): Promise<Array<Record<string, unknown>>> => {
+    const orders = (await ctx.runQuery(api.orders.getRenterOrdersDetailed, {
+      clerkId: args.clerkId,
+    })) as Array<Record<string, unknown>>;
+    return orders.filter((order: Record<string, unknown>) => {
       const status = order.orderStatus ?? "pending";
       return status !== "pending" && status !== "cancelled";
     });
@@ -708,13 +777,15 @@ export const getRenterTrackingOrders = query({
 
 export const getOwnerTrackingOrders = query({
   args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    const orders = await ctx.runQuery(api.orders.getFarmerOrders, { clerkId: args.clerkId });
-    const results = [];
+  handler: async (ctx, args): Promise<Array<Record<string, unknown>>> => {
+    const orders = (await ctx.runQuery(api.orders.getFarmerOrders, {
+      clerkId: args.clerkId,
+    })) as Array<Record<string, unknown>>;
+    const results: Array<Record<string, unknown>> = [];
 
     for (const order of orders) {
-      const listing = await ctx.db.get(order.listingId);
-      const renter = await resolveUser(ctx, order.buyerId);
+      const listing = await ctx.db.get(order.listingId as Id<"listings">);
+      const renter = await resolveUser(ctx, order.buyerId as Id<"users"> | string);
 
       results.push({
         ...order,
@@ -724,14 +795,16 @@ export const getOwnerTrackingOrders = query({
         renterName: renter?.name ?? order.buyerName ?? "Renter",
         renterAvatarUrl: renter?.avatarUrl ?? renter?.imageUrl ?? order.buyerImage,
         renterTrustScore: renter?.trustScore ?? 74,
-        trackingTimeline: ensureTrackingTimeline(order as Doc<"orders">),
+        trackingTimeline: ensureTrackingTimeline(order as unknown as Doc<"orders">),
         currentTrackingStatus:
-          ensureTrackingTimeline(order as Doc<"orders">)[ensureTrackingTimeline(order as Doc<"orders">).length - 1]?.status ??
+          ensureTrackingTimeline(order as unknown as Doc<"orders">)[
+            ensureTrackingTimeline(order as unknown as Doc<"orders">).length - 1
+          ]?.status ??
           "Payment Secured",
       });
     }
 
-    return results.filter((order) => {
+    return results.filter((order: Record<string, unknown>) => {
       const status = order.orderStatus ?? "pending";
       return status !== "pending" && status !== "cancelled";
     });
@@ -785,6 +858,89 @@ export const appendTrackingEvent = mutation({
       trackingTimeline: [...currentTimeline, createTrackingEvent(nextEvent.status, nextEvent.description)],
     });
 
+    if (args.eventType === "return") {
+      await applyCompletionMetrics(ctx, order);
+    }
+    await syncListingAvailability(ctx, order.listingId);
+
     return { success: true, data: { orderId: args.orderId, status: nextEvent.status } } as const;
+  },
+});
+
+// PHASE 3: Asset Ledger Queries for Rental History
+export const getAssetHistory = query({
+  args: { listingId: v.id("listings") },
+  handler: async (ctx, args) => {
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_listingId", (q) => q.eq("listingId", args.listingId))
+      .order("desc")
+      .collect();
+
+    const listing = await ctx.db.get(args.listingId);
+    if (!listing) return [];
+
+    const history = [];
+    for (const order of orders) {
+      if (order.orderStatus === "cancelled") continue; // Skip cancelled orders
+
+      const renter = await resolveUser(ctx, order.buyerId);
+      history.push({
+        _id: order._id,
+        listingId: order.listingId,
+        renterName: renter?.name ?? "Anonymous Renter",
+        renterEmail: renter?.email ?? "-",
+        renterPhone: renter?.phone ?? renter?.phoneNumber ?? "-",
+        renterAvatar: renter?.avatarUrl ?? renter?.imageUrl,
+        startDate: order.rentalStartDate,
+        endDate: order.rentalEndDate,
+        status: order.orderStatus ?? "pending",
+        totalAmount: order.totalAmount,
+        paymentStatus: order.paymentStatus,
+        paymentId: order.paymentId,
+        razorpayPaymentId: order.razorpayPaymentId,
+        razorpayOrderId: order.razorpayOrderId,
+        invoiceUrl: order.invoiceUrl,
+        dynamicPriceApplied: order.dynamicPriceApplied ?? 0,
+        createdAt: order.createdAt,
+      });
+    }
+
+    return history;
+  },
+});
+
+export const getRentalStats = query({
+  args: { listingId: v.id("listings") },
+  handler: async (ctx, args) => {
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_listingId", (q) => q.eq("listingId", args.listingId))
+      .collect();
+
+    const completedOrders = orders.filter(
+      (order) =>
+        order.orderStatus === "completed" ||
+        order.orderStatus === "delivered" ||
+        order.orderStatus === "placed" ||
+        order.orderStatus === "shipped"
+    );
+
+    const totalRentals = completedOrders.length;
+    const lifetimeEarnings = completedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const activeRentals = completedOrders.filter((order) =>
+      order.orderStatus === "placed" ||
+      order.orderStatus === "shipped" ||
+      order.orderStatus === "delivered"
+    ).length;
+    const invoicesIssued = completedOrders.filter((order) => Boolean(order.invoiceUrl)).length;
+
+    return {
+      totalRentals,
+      lifetimeEarnings,
+      averageRevenue: totalRentals > 0 ? lifetimeEarnings / totalRentals : 0,
+      activeRentals,
+      invoicesIssued,
+    };
   },
 });

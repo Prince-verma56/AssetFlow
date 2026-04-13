@@ -16,6 +16,7 @@ export async function POST(req: Request) {
         amount: buyerPrice || 0,
         quantity: "N/A",
         unitPricePerKg: buyerPrice || 0,
+        unitLabel: "day",
         orderId: "manual_order",
         paymentId: "manual_payment",
         gatewayOrderId: "manual_gateway_order",

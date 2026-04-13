@@ -7,11 +7,11 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
     <div className="min-h-[calc(100vh-4rem)]">
       <header className="sticky top-16 z-20 flex flex-wrap items-center justify-between gap-2 border-b bg-background/90 px-4 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/admin" className="text-sm">Dashboard</Link>
-          <Link href="/admin/inventory" className="text-sm">Inventory</Link>
-          <Link href="/admin/orders" className="text-sm">Orders</Link>
-          <Link href="/admin/ai-oracle" className="text-sm">AI Oracle</Link>
-          <Link href="/admin/analytics" className="text-sm">Analytics</Link>
+          <Link href="/farmer/dashboard" className="text-sm">Dashboard</Link>
+          <Link href="/farmer/listings" className="text-sm">Listings</Link>
+          <Link href="/farmer/oracle" className="text-sm">AI Oracle</Link>
+          <Link href="/farmer/wishlist" className="text-sm">Renter Interest</Link>
+          <Link href="/farmer/settings" className="text-sm">Settings</Link>
         </div>
         <div className="flex items-center gap-2">
           <RoleSwitcher role="owner" />

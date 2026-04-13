@@ -1,0 +1,19 @@
+
+> farmerps@0.1.0 start
+> next start
+
+▲ Next.js 16.2.2
+- Local:         http://localhost:3000
+- Network:       http://172.16.92.201:3000
+✓ Ready in 294ms
+[OrderCommunication] Sending emails for order jn7ac7pwmyadef5swd68dmkn5n84rkr4
+[OrderCommunication] Buyer receipt email: {
+  success: true,
+  data: { id: '264ab48b-eda6-4136-af6f-ed030ae269a8' },
+  error: null
+}
+[OrderCommunication] Farmer alert email: {
+  success: true,
+  data: { id: 'd52ae89b-811b-4e91-b243-01b2d5726581' },
+  error: null
+}

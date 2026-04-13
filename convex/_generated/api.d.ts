@@ -11,6 +11,7 @@
 import type * as actions_priceOracle from "../actions/priceOracle.js";
 import type * as analytics from "../analytics.js";
 import type * as crud from "../crud.js";
+import type * as follows from "../follows.js";
 import type * as listingOracleInternal from "../listingOracleInternal.js";
 import type * as listings from "../listings.js";
 import type * as marketSync from "../marketSync.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   "actions/priceOracle": typeof actions_priceOracle;
   analytics: typeof analytics;
   crud: typeof crud;
+  follows: typeof follows;
   listingOracleInternal: typeof listingOracleInternal;
   listings: typeof listings;
   marketSync: typeof marketSync;

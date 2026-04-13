@@ -18,7 +18,7 @@ export default function RoleRedirectPage() {
     }
 
     const role = normalizeRole(user.publicMetadata?.role);
-    router.replace(role ? roleToDashboard(role) : "/onboarding");
+    router.replace(role ? roleToDashboard(role) : "/");
   }, [isLoaded, isSignedIn, router, user]);
 
   return (

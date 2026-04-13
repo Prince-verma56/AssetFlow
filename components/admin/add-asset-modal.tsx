@@ -35,6 +35,7 @@ const BaseAssetSchema = z.object({
 
 const AddAssetSchema = BaseAssetSchema.extend({
   unitsAvailable: z.number().int().min(1),
+  purchaseYear: z.number().int().min(1980).max(new Date().getFullYear()).default(new Date().getFullYear()),
   state: z.string().min(1),
   city: z.string().min(1),
 });
@@ -80,6 +81,7 @@ export function AddAssetModal({
       condition: "Good",
       description: "",
       unitsAvailable: 1,
+      purchaseYear: new Date().getFullYear(),
       state: "Rajasthan",
       city: "Jaipur",
     },
@@ -218,7 +220,9 @@ export function AddAssetModal({
         description: values.description,
         pricePerDay: values.pricePerDay,
         quantity: `${values.unitsAvailable} Units`,
+        stockQuantity: values.unitsAvailable,
         minimumRentalDays: values.minDays ?? 1,
+        purchaseYear: values.purchaseYear,
         condition: values.condition,
         location: `${values.city}, ${values.state}`,
         imageUrl: values.imageUrl ? values.imageUrl : undefined,
@@ -371,7 +375,7 @@ export function AddAssetModal({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Quantity</Label>
+                  <Label>Stock Quantity</Label>
                   <div className="flex items-center rounded-xl border border-border/60 bg-muted/30 px-3">
                     <Input
                       type="number"
@@ -387,6 +391,26 @@ export function AddAssetModal({
                   </div>
                   {shouldShowError("unitsAvailable") ? (
                     <p className="text-xs text-red-400">{form.formState.errors.unitsAvailable?.message}</p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Purchase Year</Label>
+                  <Input
+                    type="number"
+                    min={1980}
+                    max={new Date().getFullYear()}
+                    value={String(form.watch("purchaseYear"))}
+                    onChange={(e) =>
+                      form.setValue("purchaseYear", Number(e.target.value || new Date().getFullYear()), {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    className="h-11 rounded-xl"
+                  />
+                  {shouldShowError("purchaseYear") ? (
+                    <p className="text-xs text-red-400">{form.formState.errors.purchaseYear?.message}</p>
                   ) : null}
                 </div>
 

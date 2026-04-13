@@ -10,7 +10,7 @@ const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider signInForceRedirectUrl="/" signUpForceRedirectUrl="/">
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         {children}
       </ConvexProviderWithClerk>

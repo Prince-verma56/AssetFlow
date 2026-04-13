@@ -13,7 +13,7 @@ export async function GET() {
 
     const unAwaitedClerkClient = await clerkClient();
     const user = await unAwaitedClerkClient.users.getUser(userId);
-    const clerkRole = normalizeRole(user.publicMetadata?.role);
+    let clerkRole = normalizeRole(user.publicMetadata?.role);
 
     let convexRole: "owner" | "renter" | null = null;
     const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -24,7 +24,32 @@ export async function GET() {
       });
       convexRole = convexUser?.role ? toClerkRole(convexUser.role) : null;
     }
-    const role = clerkRole ?? convexRole;
+    let role = clerkRole ?? convexRole;
+
+    if (!role) {
+      role = "renter";
+
+      await unAwaitedClerkClient.users.updateUserMetadata(userId, {
+        publicMetadata: {
+          ...user.publicMetadata,
+          role,
+        },
+      });
+
+      if (convexUrl) {
+        const convex = new ConvexHttpClient(convexUrl);
+        await convex.mutation(api.users.upsertRoleByClerkId, {
+          clerkId: user.id,
+          role: toConvexRole(role),
+          name: user.fullName || user.firstName || "User",
+          email:
+            user.primaryEmailAddress?.emailAddress ||
+            user.emailAddresses?.[0]?.emailAddress ||
+            "unknown@example.com",
+          imageUrl: user.imageUrl || undefined,
+        });
+      }
+    }
 
     return NextResponse.json({ exists: !!role, role: role || null });
   } catch (error) {
@@ -83,6 +108,16 @@ export async function POST(req: Request) {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 60 * 5,
+    });
+
+    // Set role_switching cookie to flag that a role switch is in progress
+    // This prevents middleware from blocking access during the transition
+    response.cookies.set("role_switching", "true", {
+      maxAge: 5, // 5 seconds - just long enough for the redirect to complete
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
     });
 
     return response;

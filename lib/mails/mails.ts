@@ -6,7 +6,7 @@ import { BuyerReceiptEmail } from "@/app/features/emails/components/BuyerReceipt
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
-const defaultFrom = process.env.RESEND_FROM_EMAIL || "FarmDirect <onboarding@resend.dev>";
+const defaultFrom = process.env.RESEND_FROM_EMAIL || "AssetFlow <onboarding@resend.dev>";
 const recipientOverride = process.env.RESEND_EMAIL_OVERRIDE;
 
 const resolveRecipients = (email: string) => {
@@ -21,6 +21,7 @@ type BuyerReceiptInput = {
   amount: number;
   quantity: string;
   unitPricePerKg: number;
+  unitLabel?: string;
   orderId: string;
   paymentId: string;
   gatewayOrderId: string;
@@ -48,7 +49,10 @@ type FarmerAlertInput = {
 };
 
 export const sendWelcomeEmail = async (email: string, name: string, role: string) => {
-  if (!resend) return { success: false, error: "RESEND_API_KEY is missing." };
+  if (!resend) {
+    console.log("[EMAIL_SERVICE] Mock Mode - Welcome Email:", { email, name, role });
+    return { success: true, mocked: true };
+  }
   try {
     const { data, error } = await resend.emails.send({
       from: defaultFrom,
@@ -73,8 +77,16 @@ export const sendFarmerSaleAlert = async ({
   sourceLocation,
 }: FarmerAlertInput) => {
   if (!resend) {
-    console.log("RESEND_API_KEY is missing");
-    return { success: false, error: "RESEND_API_KEY is missing." };
+    console.log("[EMAIL_SERVICE] Mock Mode - Farmer Sale Alert:", {
+      farmerEmail,
+      farmerName,
+      crop,
+      amount,
+      buyerName,
+      orderId,
+      sourceLocation,
+    });
+    return { success: true, mocked: true };
   }
 
   try {
@@ -104,6 +116,7 @@ export const sendBuyerReceiptEmail = async ({
   amount,
   quantity,
   unitPricePerKg,
+  unitLabel,
   orderId,
   paymentId,
   gatewayOrderId,
@@ -115,8 +128,16 @@ export const sendBuyerReceiptEmail = async ({
   invoiceDateIso,
 }: BuyerReceiptInput) => {
   if (!resend) {
-    console.log("RESEND_API_KEY is missing");
-    return { success: false, error: "RESEND_API_KEY is missing." };
+    console.log("[EMAIL_SERVICE] Mock Mode - Buyer Receipt Email:", {
+      buyerEmail,
+      buyerName,
+      crop,
+      amount,
+      quantity,
+      orderId,
+      invoiceDateIso,
+    });
+    return { success: true, mocked: true };
   }
 
   try {
@@ -130,6 +151,7 @@ export const sendBuyerReceiptEmail = async ({
         amount,
         quantity,
         unitPricePerKg,
+        unitLabel,
         orderId,
         paymentId,
         gatewayOrderId,

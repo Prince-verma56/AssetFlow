@@ -10,7 +10,7 @@ import "./globals.css";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 
 export const metadata: Metadata = {
-  title: "AgriRent",
+  title: "AssetFlow - AssetFlow Equipment Rental Platform",
   description: "AgriRent equipment rental platform built with Clerk and Convex",
 };
 

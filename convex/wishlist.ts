@@ -47,6 +47,65 @@ export const listByRenter = query({
   },
 });
 
+export const listByOwner = query({
+  args: { ownerId: v.string() },
+  handler: async (ctx, args) => {
+    const listings = await ctx.db
+      .query("listings")
+      .withIndex("by_farmer", (q) => q.eq("farmerId", args.ownerId as any))
+      .take(500);
+
+    const wishlistItemsByListing = new Map<string, any[]>();
+    const rentersSet = new Map<string, any>();
+
+    for (const listing of listings) {
+      const items = await ctx.db
+        .query("wishlist")
+        .filter((q) => q.eq(q.field("listingId"), listing._id))
+        .take(500);
+
+      for (const item of items) {
+        const renter = await ctx.db
+          .query("users")
+          .withIndex("by_clerkId", (q) => q.eq("clerkId", item.renterId))
+          .unique();
+
+        if (renter) {
+          const renterId = String(renter._id);
+          if (!rentersSet.has(renterId)) {
+            rentersSet.set(renterId, {
+              id: renterId,
+              clerkId: renter.clerkId,
+              name: renter.name,
+              avatarUrl: renter.avatarUrl ?? renter.imageUrl,
+              trustScore: renter.trustScore ?? 75,
+              bio: renter.bio,
+              location: renter.cityRegion,
+              savedAt: item.savedAt,
+              listings: [],
+            });
+          }
+
+          const renterData = rentersSet.get(renterId)!;
+          if (!renterData.listings.find((l: any) => l._id === listing._id)) {
+            renterData.listings.push({
+              _id: listing._id,
+              title: listing.title,
+              assetCategory: listing.assetCategory,
+              imageUrl: listing.imageUrl,
+              pricePerDay: listing.pricePerDay,
+              location: listing.location,
+              savedAt: item.savedAt,
+            });
+          }
+        }
+      }
+    }
+
+    return Array.from(rentersSet.values()).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  },
+});
+
 export const isSaved = query({
   args: {
     renterId: v.string(),

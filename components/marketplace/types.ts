@@ -4,6 +4,7 @@ export type MarketplaceProduct = {
   location: string;
   ownerName?: string;
   ownerImage?: string;
+  ownerEmail?: string;
   quantity: string;
   pricePerDay: number;
   buyerPricePerKg: number;

@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Heart, Info, ShoppingBag } from "lucide-react";
+import Link from "next/link";
+import { format } from "date-fns";
+import { Bookmark, Heart, Info, ShoppingBag } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -35,6 +37,7 @@ export default function MarketplacePage() {
   const [bookingOpen, setBookingOpen] = React.useState(false);
 
   const toggleSaved = useMutation(api.wishlist.toggleSaved);
+  const toggleSavedOwner = useMutation(api.savedOwners.toggleSavedOwner);
   const cityOptions = React.useMemo(() => {
     if (state === "All") return ["All"];
     return ["All", ...(MANDI_MARKET_OPTIONS[state] ?? [])];
@@ -50,10 +53,12 @@ export default function MarketplacePage() {
   });
   const wishlistCount = useQuery(api.wishlist.countByRenter, user?.id ? { renterId: user.id } : "skip");
   const wishlistEntries = useQuery(api.wishlist.listByRenter, user?.id ? { renterId: user.id } : "skip");
+  const savedOwnerIds = useQuery(api.savedOwners.listOwnerIdsByRenter, user?.id ? { renterId: user.id } : "skip");
 
   const savedSet = React.useMemo(() => {
     return new Set((wishlistEntries ?? []).map((entry) => String(entry.listing._id)));
   }, [wishlistEntries]);
+  const savedOwnerSet = React.useMemo(() => new Set(savedOwnerIds ?? []), [savedOwnerIds]);
 
   const filtered = React.useMemo(() => {
     const raw = (listings ?? []) as unknown as MarketplaceListing[];
@@ -80,6 +85,20 @@ export default function MarketplacePage() {
     toast.success(result.saved ? "Saved to wishlist" : "Removed from wishlist");
   };
 
+  const handleToggleSavedOwner = async (listing: MarketplaceListing) => {
+    if (!user?.id || !listing.ownerId) {
+      toast.error("Please sign in to save owners.");
+      return;
+    }
+
+    const result = await toggleSavedOwner({
+      renterId: user.id,
+      ownerId: listing.ownerId,
+    });
+
+    toast.success(result.saved ? "Owner saved" : "Owner removed");
+  };
+
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 p-4 pb-20 md:p-6">
       <div className="flex flex-col gap-4 rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-sm dark:border-border dark:bg-card md:flex-row md:items-end md:justify-between">
@@ -90,12 +109,14 @@ export default function MarketplacePage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="relative rounded-xl border-zinc-200 bg-white dark:border-border dark:bg-background">
+          <Button asChild variant="outline" className="relative rounded-xl border-zinc-200 bg-white dark:border-border dark:bg-background">
+            <Link href="/marketplace/wishlist">
             <Heart className="mr-2 size-4" />
             Wishlist
             <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white">
               {wishlistCount ?? 0}
             </span>
+            </Link>
           </Button>
         </div>
       </div>
@@ -174,7 +195,13 @@ export default function MarketplacePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filtered.map((listing) => {
           const isSaved = savedSet.has(String(listing._id));
-          const trustScore = Math.min(99, Math.max(82, Math.round((listing.oracleConfidence ?? 72) + 17)));
+          const trustScore = listing.ownerTrustScore ?? Math.min(99, Math.max(82, Math.round((listing.oracleConfidence ?? 72) + 17)));
+          const isOwnerSaved = listing.ownerId ? savedOwnerSet.has(listing.ownerId) : false;
+          const availableStock = listing.availableStock ?? listing.stockQuantity ?? 1;
+          const isSoldOut = availableStock <= 0;
+          const nearestEndDate = listing.nearestEndDate ? format(new Date(listing.nearestEndDate), "dd MMM yyyy") : null;
+          const rentalsCount = listing.totalRentals ?? listing.lifetimeRentals ?? 0;
+          const assetAge = listing.assetAge;
 
           return (
             <Card key={String(listing._id)} className="overflow-hidden border-zinc-200/70 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-border dark:bg-card">
@@ -212,25 +239,65 @@ export default function MarketplacePage() {
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline">{listing.qualityScore ?? "AI Verified"}</Badge>
                   <Badge variant="outline">Trust {trustScore}/100</Badge>
+                  {assetAge !== null && assetAge !== undefined ? (
+                    <Badge variant="outline">{assetAge} yrs old</Badge>
+                  ) : null}
+                  <Badge variant="outline">{rentalsCount} rentals</Badge>
+                  {availableStock > 0 && availableStock < 3 ? (
+                    <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Only {availableStock} left!</Badge>
+                  ) : null}
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-3">
+                <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Owner</p>
+                    <p className="text-sm font-semibold">{listing.ownerName ?? listing.farmerName ?? "Verified Owner"}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-full"
+                    onClick={() => void handleToggleSavedOwner(listing)}
+                    disabled={!listing.ownerId}
+                    aria-label="Save owner"
+                  >
+                    <Bookmark className={isOwnerSaved ? "size-4 fill-current text-primary" : "size-4"} />
+                  </Button>
+                </div>
+
                 <div className="line-clamp-3 rounded-xl bg-zinc-50 p-3 text-sm text-muted-foreground dark:bg-muted/40">
                   {listing.description}
                 </div>
 
+                {isSoldOut ? (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-600">
+                    {nearestEndDate ? `Available again on ${nearestEndDate}` : "Currently rented out"}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                    {availableStock} unit{availableStock === 1 ? "" : "s"} available now
+                  </div>
+                )}
+
                 <div className="grid gap-2">
-                  <Button
-                    className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700"
-                    onClick={() => {
-                      setSelectedListing(listing);
-                      setBookingOpen(true);
-                    }}
-                  >
-                    <ShoppingBag className="mr-2 size-4" />
-                    Book Now
-                  </Button>
+                  {isSoldOut ? (
+                    <Button disabled className="w-full rounded-xl bg-zinc-300 text-zinc-700 hover:bg-zinc-300">
+                      {nearestEndDate ? `Available again on ${nearestEndDate}` : "Temporarily unavailable"}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => {
+                        setSelectedListing(listing);
+                        setBookingOpen(true);
+                      }}
+                    >
+                      <ShoppingBag className="mr-2 size-4" />
+                      Book Now
+                    </Button>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="rounded-xl" onClick={() => void handleToggleSaved(listing)}>

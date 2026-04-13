@@ -36,6 +36,9 @@ type EscrowCheckoutParams = {
   description: string;
   deliveryAddress?: string;
   customer?: PaymentCustomer;
+  dynamicPriceApplied?: number;
+  rentalStartDate?: number;
+  rentalEndDate?: number;
 };
 
 export const useRazorpay = () => {
@@ -141,6 +144,9 @@ export const useRazorpay = () => {
         razorpayPaymentId: success.paymentId,
         razorpayOrderId: success.gatewayOrderId,
         deliveryAddress: params.deliveryAddress,
+        dynamicPriceApplied: params.dynamicPriceApplied,
+        rentalStartDate: params.rentalStartDate,
+        rentalEndDate: params.rentalEndDate,
       });
 
       return {

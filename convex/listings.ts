@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -20,20 +20,165 @@ function distanceInKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return earthRadiusKm * c;
 }
 
+function normalizeTimestamp(value: string | number | undefined | null) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return asNumber;
+  }
+  return null;
+}
+
+function getStockQuantity(listing: Doc<"listings">) {
+  if (typeof listing.stockQuantity === "number" && listing.stockQuantity > 0) {
+    return listing.stockQuantity;
+  }
+
+  const parsed = Number.parseInt(String(listing.quantity ?? "").replace(/[^\d]/g, ""), 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return 1;
+}
+
+function isOperationalOrder(order: Doc<"orders">) {
+  const status = order.orderStatus ?? "pending";
+  return status === "placed" || status === "escrow" || status === "shipped" || status === "delivered";
+}
+
+function isOverlap(
+  orderStart: number | null,
+  orderEnd: number | null,
+  requestedStart: number | null,
+  requestedEnd: number | null,
+) {
+  if (requestedStart === null || requestedEnd === null) {
+    const now = Date.now();
+    return (orderEnd ?? now) >= now;
+  }
+
+  const safeOrderStart = orderStart ?? orderEnd ?? requestedStart;
+  const safeOrderEnd = orderEnd ?? orderStart ?? requestedEnd;
+  return safeOrderStart <= requestedEnd && safeOrderEnd >= requestedStart;
+}
+
+async function getListingOrders(ctx: QueryCtx, listingId: Id<"listings">) {
+  return await ctx.db
+    .query("orders")
+    .withIndex("by_listingId", (q) => q.eq("listingId", listingId))
+    .order("desc")
+    .take(200);
+}
+
+async function getAvailabilitySnapshot(
+  ctx: QueryCtx,
+  listing: Doc<"listings">,
+  requestedStart?: number,
+  requestedEnd?: number,
+) {
+  const orders = await getListingOrders(ctx, listing._id);
+  const operationalOrders = orders.filter(isOperationalOrder);
+
+  const overlappingOrders = operationalOrders.filter((order) =>
+    isOverlap(
+      normalizeTimestamp(order.rentalStartDate),
+      normalizeTimestamp(order.rentalEndDate),
+      requestedStart ?? null,
+      requestedEnd ?? null,
+    ),
+  );
+
+  const stockQuantity = getStockQuantity(listing);
+  const activeOrdersCount = overlappingOrders.length;
+  const availableStock = Math.max(stockQuantity - activeOrdersCount, 0);
+  const nearestEndDate = overlappingOrders
+    .map((order) => normalizeTimestamp(order.rentalEndDate))
+    .filter((value): value is number => value !== null)
+    .sort((a, b) => a - b)[0] ?? null;
+
+  return {
+    stockQuantity,
+    activeOrdersCount,
+    availableStock,
+    nearestEndDate,
+  };
+}
+
+function deriveTrustScore(owner: Doc<"users"> | null) {
+  if (!owner) return 78;
+  const completed = owner.lifetimeCompletedOrders ?? 0;
+  const followers = owner.followerCount ?? 0;
+  return Math.min(99, Math.max(owner.trustScore ?? 74, 70 + Math.min(18, completed / 4) + Math.min(8, followers / 25)));
+}
+
+function deriveOwnerBadge(owner: Doc<"users"> | null, listings: Array<Doc<"listings">>) {
+  const completed = owner?.lifetimeCompletedOrders ?? 0;
+  const listingRentals = listings.reduce((sum, listing) => sum + (listing.totalRentals ?? listing.lifetimeRentals ?? 0), 0);
+  if (completed >= 50 || listingRentals >= 50) return "Elite Owner";
+  if (completed >= 20 || listingRentals >= 20) return "Trusted Owner";
+  return "Verified Owner";
+}
+
+async function decorateListing(
+  ctx: QueryCtx,
+  listing: Doc<"listings">,
+  owner?: Doc<"users"> | null,
+  requestedStart?: number,
+  requestedEnd?: number,
+) {
+  const resolvedOwner = owner ?? ((await ctx.db.get(listing.farmerId)) as Doc<"users"> | null);
+  const availability = await getAvailabilitySnapshot(ctx, listing, requestedStart, requestedEnd);
+  const currentYear = new Date().getFullYear();
+  const assetAge =
+    typeof listing.purchaseYear === "number" && listing.purchaseYear > 1900
+      ? Math.max(0, currentYear - listing.purchaseYear)
+      : null;
+
+  return {
+    ...listing,
+    quantity: listing.quantity ?? `${availability.stockQuantity} Units`,
+    stockQuantity: availability.stockQuantity,
+    availableStock: availability.availableStock,
+    activeOrdersCount: availability.activeOrdersCount,
+    nearestEndDate: availability.nearestEndDate ?? listing.nextAvailableDate ?? null,
+    farmerName: resolvedOwner?.name || "Verified Farmer",
+    farmerImage: resolvedOwner?.imageUrl,
+    ownerId: String(listing.farmerId),
+    ownerName: resolvedOwner?.businessName || resolvedOwner?.name || "Verified Owner",
+    ownerImage: resolvedOwner?.avatarUrl ?? resolvedOwner?.imageUrl,
+    ownerEmail: resolvedOwner?.email,
+    ownerTrustScore: deriveTrustScore(resolvedOwner),
+    ownerFollowerCount: resolvedOwner?.followerCount ?? 0,
+    ownerLifetimeCompletedOrders: resolvedOwner?.lifetimeCompletedOrders ?? 0,
+    assetAge,
+    lifetimeRentals: listing.lifetimeRentals ?? listing.totalRentals ?? 0,
+    totalRentals: listing.totalRentals ?? listing.lifetimeRentals ?? 0,
+  };
+}
+
 export const getById = query({
   args: { id: v.id("listings") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const listing = await ctx.db.get(args.id);
+    if (!listing) return null;
+    return await decorateListing(ctx, listing);
   },
 });
 
 export const listByFarmer = query({
   args: { farmerId: v.id("users") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const listings = await ctx.db
       .query("listings")
       .withIndex("by_farmer", (q) => q.eq("farmerId", args.farmerId))
-      .collect();
+      .order("desc")
+      .take(200);
+
+    const result = [];
+    for (const listing of listings) {
+      result.push(await decorateListing(ctx, listing));
+    }
+    return result;
   },
 });
 
@@ -46,14 +191,13 @@ export const listAvailable = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 24, 1), 60);
-    const result = [];
     let queryResult: Doc<"listings">[];
 
     if (args.categoryId && args.categoryId !== "All") {
       queryResult = await ctx.db
         .query("listings")
         .withIndex("by_categoryId_and_status", (q) =>
-          q.eq("categoryId", args.categoryId as string).eq("status", "available")
+          q.eq("categoryId", args.categoryId).eq("status", "available"),
         )
         .order("desc")
         .take(limit * 3);
@@ -61,7 +205,7 @@ export const listAvailable = query({
       queryResult = await ctx.db
         .query("listings")
         .withIndex("by_location_and_status", (q) =>
-          q.eq("location", args.location as string).eq("status", "available")
+          q.eq("location", args.location as string).eq("status", "available"),
         )
         .order("desc")
         .take(limit * 3);
@@ -69,7 +213,7 @@ export const listAvailable = query({
       queryResult = await ctx.db
         .query("listings")
         .withIndex("by_assetCategory_and_status", (q) =>
-          q.eq("assetCategory", args.assetCategory as string).eq("status", "available")
+          q.eq("assetCategory", args.assetCategory as string).eq("status", "available"),
         )
         .order("desc")
         .take(limit * 3);
@@ -85,20 +229,9 @@ export const listAvailable = query({
       queryResult = queryResult.filter((listing) => listing.location === args.location);
     }
 
-    queryResult = queryResult.slice(0, limit);
-
-    // Attach farmer identity securely for the buyer frontend
-    for (const listing of queryResult) {
-      const farmer = await ctx.db.get(listing.farmerId);
-      result.push({
-        ...listing,
-        farmerName: farmer?.name || "Verified Farmer",
-        farmerImage: farmer?.imageUrl,
-        ownerId: String(listing.farmerId),
-        ownerName: farmer?.name || "Verified Owner",
-        ownerImage: farmer?.avatarUrl ?? farmer?.imageUrl,
-        ownerTrustScore: farmer?.trustScore ?? 78,
-      });
+    const result = [];
+    for (const listing of queryResult.slice(0, limit)) {
+      result.push(await decorateListing(ctx, listing));
     }
 
     return result;
@@ -113,14 +246,13 @@ export const getAllAvailable = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 24, 1), 60);
-    const result = [];
-
     let queryResult: Doc<"listings">[];
+
     if (args.categoryId && args.categoryId !== "All") {
       queryResult = await ctx.db
         .query("listings")
         .withIndex("by_categoryId_and_status", (q) =>
-          q.eq("categoryId", args.categoryId as string).eq("status", "available")
+          q.eq("categoryId", args.categoryId).eq("status", "available"),
         )
         .order("desc")
         .take(limit * 3);
@@ -128,7 +260,7 @@ export const getAllAvailable = query({
       queryResult = await ctx.db
         .query("listings")
         .withIndex("by_location_and_status", (q) =>
-          q.eq("location", args.location as string).eq("status", "available")
+          q.eq("location", args.location as string).eq("status", "available"),
         )
         .order("desc")
         .take(limit * 3);
@@ -144,22 +276,31 @@ export const getAllAvailable = query({
       queryResult = queryResult.filter((listing) => listing.location === args.location);
     }
 
-    queryResult = queryResult.slice(0, limit);
+    const result = [];
+    for (const listing of queryResult.slice(0, limit)) {
+      result.push(await decorateListing(ctx, listing));
+    }
+    return result;
+  },
+});
 
-    for (const listing of queryResult) {
-      const farmer = await ctx.db.get(listing.farmerId);
-      result.push({
-        ...listing,
-        farmerName: farmer?.name || "Verified Farmer",
-        farmerImage: farmer?.imageUrl,
-        ownerId: String(listing.farmerId),
-        ownerName: farmer?.name || "Verified Owner",
-        ownerImage: farmer?.avatarUrl ?? farmer?.imageUrl,
-        ownerTrustScore: farmer?.trustScore ?? 78,
-      });
+export const getBookingAvailability = query({
+  args: {
+    listingId: v.id("listings"),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const listing = await ctx.db.get(args.listingId);
+    if (!listing) {
+      return { success: false, error: "Listing not found" } as const;
     }
 
-    return result;
+    const snapshot = await getAvailabilitySnapshot(ctx, listing, args.startDate, args.endDate);
+    return {
+      success: true,
+      data: snapshot,
+    } as const;
   },
 });
 
@@ -206,20 +347,22 @@ export const updateFarmerOracleData = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return; // Silent return if not authenticated
+    if (!identity) return null;
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
       .unique();
 
-    if (!user || user.role !== "farmer") return;
+    if (!user || user.role !== "farmer") return null;
 
-    const listings = await ctx.db
+    const allListings = await ctx.db
       .query("listings")
       .withIndex("by_farmer", (q) => q.eq("farmerId", user._id))
-      .filter((q) => q.eq(q.field("assetCategory"), args.assetCategory))
-      .collect();
+      .order("desc")
+      .take(200);
+
+    const listings = allListings.filter((listing) => listing.assetCategory === args.assetCategory);
 
     for (const listing of listings) {
       await ctx.db.patch(listing._id, {
@@ -227,16 +370,18 @@ export const updateFarmerOracleData = mutation({
         mandiModalPrice: args.mandiModalPrice,
         oracleRecommendation: args.oracleRecommendation,
         oracleConfidence: args.oracleConfidence,
-        aiSuggestedPrice: args.oraclePrice / 100, // Update this as well for buyers
+        aiSuggestedPrice: args.oraclePrice / 100,
         aiRecommendation: args.oracleRecommendation,
       });
     }
+
+    return null;
   },
 });
 
 export const createListing = mutation({
   args: {
-    clerkId: v.string(), // By-passing JWT requirement
+    clerkId: v.string(),
     title: v.string(),
     assetCategory: v.string(),
     categoryId: v.optional(v.string()),
@@ -244,7 +389,9 @@ export const createListing = mutation({
     description: v.string(),
     pricePerDay: v.number(),
     quantity: v.string(),
+    stockQuantity: v.optional(v.number()),
     minimumRentalDays: v.optional(v.number()),
+    purchaseYear: v.optional(v.number()),
     condition: v.optional(v.union(v.literal("Like New"), v.literal("Excellent"), v.literal("Good"), v.literal("Fair"))),
     location: v.string(),
     imageUrl: v.optional(v.string()),
@@ -259,7 +406,11 @@ export const createListing = mutation({
 
     if (!user) throw new Error("User record not found. Cannot create listing.");
 
-    const listingId = await ctx.db.insert("listings", {
+    const parsedQuantity = Number.parseInt(args.quantity.replace(/[^\d]/g, ""), 10);
+    const stockQuantity = Math.max(1, (args.stockQuantity ?? parsedQuantity) || 1);
+    const currentYear = new Date().getFullYear();
+
+    return await ctx.db.insert("listings", {
       farmerId: user._id,
       title: args.title,
       assetCategory: args.assetCategory,
@@ -268,17 +419,24 @@ export const createListing = mutation({
       description: args.description,
       pricePerDay: args.pricePerDay,
       quantity: args.quantity,
+      stockQuantity,
       minimumRentalDays: args.minimumRentalDays,
+      purchaseYear:
+        typeof args.purchaseYear === "number" && args.purchaseYear >= 1980 && args.purchaseYear <= currentYear
+          ? args.purchaseYear
+          : undefined,
       condition: args.condition,
       location: args.location,
       imageUrl: args.imageUrl,
       approxLat: args.approxLat,
       approxLng: args.approxLng,
       status: "available",
-      aiSuggestedPrice: args.pricePerDay, // Baseline until Oracle runs
+      aiSuggestedPrice: args.pricePerDay,
+      totalRentals: 0,
+      lifetimeRentals: 0,
+      nextAvailableDate: undefined,
+      averageRating: undefined,
     });
-
-    return listingId;
   },
 });
 
@@ -288,11 +446,11 @@ export const updateListing = mutation({
     description: v.optional(v.string()),
     pricePerDay: v.optional(v.number()),
     quantity: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("available"), v.literal("sold"))),
+    stockQuantity: v.optional(v.number()),
+    purchaseYear: v.optional(v.number()),
+    status: v.optional(v.union(v.literal("available"), v.literal("maintenance"), v.literal("sold"))),
   },
   handler: async (ctx, args) => {
-    // Ideally we would verify identity here matching clerk ID to farmer ID 
-    // but aligning with prototype authentication flow we will just allow patching
     const { listingId, ...updates } = args;
     await ctx.db.patch(listingId, updates);
   },
@@ -319,40 +477,15 @@ export const getListingsNearby = query({
     const radiusKm = Math.min(Math.max(args.radiusKm ?? 50, 1), 200);
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
 
-    let queryResult;
-    if (args.categoryId && args.categoryId !== "All") {
-      queryResult = ctx.db
-        .query("listings")
-        .withIndex("by_categoryId_and_status", (q) => q.eq("categoryId", args.categoryId).eq("status", "available"));
-    } else {
-      queryResult = ctx.db
-        .query("listings")
-        .withIndex("by_status", (q) => q.eq("status", "available"));
-    }
+    const queryResult =
+      args.categoryId && args.categoryId !== "All"
+        ? ctx.db
+            .query("listings")
+            .withIndex("by_categoryId_and_status", (q) => q.eq("categoryId", args.categoryId).eq("status", "available"))
+        : ctx.db.query("listings").withIndex("by_status", (q) => q.eq("status", "available"));
 
     const candidates = await queryResult.order("desc").take(300);
-
-    const results: Array<{
-      id: string;
-      title: string;
-      assetCategory: string;
-      description: string;
-      pricePerDay: number;
-      quantity: string;
-      location: string;
-      imageUrl?: string;
-      farmerId: string;
-      farmerName: string;
-      farmerImage?: string;
-      approxLat: number;
-      approxLng: number;
-      distanceKm: number;
-      oraclePrice?: number;
-      mandiModalPrice?: number;
-      qualityScore?: string;
-      categoryId?: string;
-      subCategoryId?: string;
-    }> = [];
+    const results = [];
 
     for (const listing of candidates) {
       if (listing.approxLat === undefined || listing.approxLng === undefined) continue;
@@ -360,27 +493,12 @@ export const getListingsNearby = query({
       const distanceKm = distanceInKm(args.lat, args.lng, listing.approxLat, listing.approxLng);
       if (distanceKm > radiusKm) continue;
 
-      const farmer = await ctx.db.get(listing.farmerId);
+      const owner = (await ctx.db.get(listing.farmerId)) as Doc<"users"> | null;
+      const decorated = await decorateListing(ctx, listing, owner);
       results.push({
         id: String(listing._id),
-        title: listing.title ?? listing.assetCategory,
-        assetCategory: listing.assetCategory,
-        description: listing.description,
-        pricePerDay: listing.pricePerDay,
-        quantity: listing.quantity,
-        location: listing.location,
-        imageUrl: listing.imageUrl,
-        farmerId: String(listing.farmerId),
-        farmerName: farmer?.name ?? "Verified Farmer",
-        farmerImage: farmer?.imageUrl,
-        approxLat: listing.approxLat,
-        approxLng: listing.approxLng,
+        ...decorated,
         distanceKm: Number(distanceKm.toFixed(1)),
-        oraclePrice: listing.oraclePrice,
-        mandiModalPrice: listing.mandiModalPrice,
-        qualityScore: listing.qualityScore,
-        categoryId: listing.categoryId,
-        subCategoryId: listing.subCategoryId,
       });
     }
 
@@ -411,9 +529,129 @@ export const getListingsByFarmer = query({
       .order("desc")
       .take(200);
 
+    const data = [];
+    for (const listing of listings) {
+      data.push(await decorateListing(ctx, listing, farmer));
+    }
+
     return {
       success: true,
-      data: listings,
+      data,
+    } as const;
+  },
+});
+
+export const getOwnerDashboard = query({
+  args: { clerkId: v.string(), days: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const owner = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+
+    if (!owner) {
+      return { success: false, error: "Owner not found" } as const;
+    }
+
+    const listings = await ctx.db
+      .query("listings")
+      .withIndex("by_farmer", (q) => q.eq("farmerId", owner._id))
+      .order("desc")
+      .take(200);
+
+    const ordersById = await ctx.db
+      .query("orders")
+      .withIndex("by_farmer", (q) => q.eq("farmerId", owner._id))
+      .order("desc")
+      .take(300);
+    const ordersByClerk = await ctx.db
+      .query("orders")
+      .withIndex("by_farmer", (q) => q.eq("farmerId", args.clerkId))
+      .order("desc")
+      .take(300);
+
+    const orders = [...ordersById, ...ordersByClerk].filter(
+      (order, index, self) => self.findIndex((candidate) => candidate._id === order._id) === index,
+    );
+
+    const totalEarnings = orders
+      .filter((order) => order.paymentStatus === "paid")
+      .reduce((sum, order) => sum + order.totalAmount, 0);
+    const activeAssets = listings.filter((listing) => listing.status !== "sold").length;
+    const currentlyRentedOut = orders.filter(isOperationalOrder).length;
+    const pendingRequests = orders.filter((order) => {
+      const status = order.orderStatus ?? "pending";
+      return status === "placed" || status === "escrow";
+    }).length;
+
+    const rows = [];
+    for (const listing of listings) {
+      const availability = await getAvailabilitySnapshot(ctx, listing);
+      const activeOrder = orders.find(
+        (order) => order.listingId === listing._id && isOperationalOrder(order),
+      );
+      const renter =
+        activeOrder
+          ? typeof activeOrder.buyerId === "string"
+            ? await ctx.db.query("users").withIndex("by_clerkId", (q) => q.eq("clerkId", activeOrder.buyerId)).unique()
+            : await ctx.db.get(activeOrder.buyerId)
+          : null;
+
+      const totalEarned = orders
+        .filter((order) => order.listingId === listing._id && order.paymentStatus === "paid")
+        .reduce((sum, order) => sum + order.totalAmount, 0);
+
+      rows.push({
+        listingId: String(listing._id),
+        assetName: listing.title,
+        status:
+          listing.status === "maintenance"
+            ? "Maintenance"
+            : availability.availableStock === 0
+              ? "Rented"
+              : "Available",
+        currentRenter: (renter as Doc<"users"> | null)?.name ?? "None",
+        nextAvailableDate: availability.nearestEndDate ?? null,
+        totalEarned,
+        availableStock: availability.availableStock,
+        stockQuantity: availability.stockQuantity,
+      });
+    }
+
+    const today = new Date();
+    const chartDays = args.days ?? 30;
+    const chart = Array.from({ length: chartDays }, (_, index) => {
+      const bucket = new Date(today);
+      bucket.setDate(today.getDate() - (chartDays - 1 - index));
+      const bucketLabel = bucket.toISOString().slice(5, 10);
+      const count = orders.filter((order) => {
+        const stamp = order.createdAt ?? order._creationTime;
+        const day = new Date(stamp);
+        return (
+          day.getFullYear() === bucket.getFullYear() &&
+          day.getMonth() === bucket.getMonth() &&
+          day.getDate() === bucket.getDate()
+        );
+      }).length;
+
+      return {
+        day: bucketLabel,
+        requests: count,
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        metrics: {
+          totalEarnings,
+          activeAssets,
+          currentlyRentedOut,
+          pendingRequests,
+        },
+        rows,
+        chart,
+      },
     } as const;
   },
 });
@@ -450,15 +688,23 @@ export const getListingsByOwnerId = query({
       .order("desc")
       .take(limit);
 
+    const data = [];
+    for (const listing of listings.filter((item) => item.status === "available")) {
+      data.push(await decorateListing(ctx, listing, owner));
+    }
+
     return {
       success: true,
-      data: listings.filter((listing) => listing.status === "available"),
+      data,
       owner: {
         id: String(owner._id),
-        name: owner.name,
+        name: owner.businessName ?? owner.name,
         avatarUrl: owner.avatarUrl ?? owner.imageUrl,
-        trustScore: owner.trustScore ?? 78,
+        trustScore: deriveTrustScore(owner),
         bio: owner.bio ?? "Owner profile",
+        followerCount: owner.followerCount ?? 0,
+        lifetimeCompletedOrders: owner.lifetimeCompletedOrders ?? 0,
+        badge: deriveOwnerBadge(owner, listings),
       },
     } as const;
   },
@@ -483,7 +729,8 @@ export const getAvailableMapListings = query({
       const lng = listing.approxLng ?? listing.exactLng;
       if (lat === undefined || lng === undefined) continue;
 
-      const owner = await ctx.db.get(listing.farmerId);
+      const owner = (await ctx.db.get(listing.farmerId)) as Doc<"users"> | null;
+      const decorated = await decorateListing(ctx, listing, owner);
 
       points.push({
         id: String(listing._id),
@@ -495,9 +742,11 @@ export const getAvailableMapListings = query({
         lat,
         lng,
         ownerId: String(listing.farmerId),
-        ownerName: owner?.name ?? "Verified Owner",
-        ownerAvatarUrl: owner?.avatarUrl ?? owner?.imageUrl,
-        ownerTrustScore: owner?.trustScore ?? 78,
+        ownerName: decorated.ownerName,
+        ownerAvatarUrl: decorated.ownerImage,
+        ownerTrustScore: decorated.ownerTrustScore,
+        availableStock: decorated.availableStock,
+        nearestEndDate: decorated.nearestEndDate,
       });
     }
 

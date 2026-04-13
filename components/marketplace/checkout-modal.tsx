@@ -88,6 +88,8 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
     try {
       if (!user?.id) throw new Error("Unauthenticated check");
 
+      console.log(`[Checkout] Payment successful, creating order...`);
+
       const orderId = await createOrder({
         clerkId: user.id,
         listingId: product.id as Id<"listings">,
@@ -104,11 +106,13 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
         longitude: coords.lng,
       });
 
-      await processOrderCommunication({
+      console.log(`[Checkout] Order created: ${orderId}, sending emails...`);
+
+      const emailResult = await processOrderCommunication({
         renterEmail: user?.primaryEmailAddress?.emailAddress || "renter@example.com",
         renterName: user?.fullName || "Renter",
-        ownerEmail: "owner@farmdirect.ai",
-        ownerName: product.location.split(',')[0], 
+        ownerEmail: product.ownerEmail || user?.primaryEmailAddress?.emailAddress || "owner@example.com",
+        ownerName: product.ownerName || product.location.split(",")[0],
         assetCategory: product.equipment,
         amount: totalCost,
         orderId: String(orderId),
@@ -116,14 +120,17 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
         gatewayOrderId: payload.gatewayOrderId || "-",
         quantity: `${rentalDays} days`,
         unitPricePerKg: product.pricePerDay,
+        unitLabel: "day",
         sourceLocation: product.location,
         deliveryAddress: address,
         productImageUrl: getCropImage(product.equipment),
       });
 
+      console.log(`[Checkout] Email result:`, emailResult);
+
       setSuccess(true);
     } catch (error) {
-      console.error(error);
+      console.error(`[Checkout] Error:`, error);
     }
   };
 

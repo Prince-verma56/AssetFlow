@@ -40,6 +40,8 @@ type EditingListing = {
   description: string;
   pricePerDay: string;
   quantity: string;
+  stockQuantity: string;
+  purchaseYear: string;
 };
 
 export default function InventoryPage() {
@@ -74,6 +76,8 @@ export default function InventoryPage() {
         description: editingListing.description,
         pricePerDay: Number(editingListing.pricePerDay),
         quantity: editingListing.quantity,
+        stockQuantity: Number(editingListing.stockQuantity),
+        purchaseYear: Number(editingListing.purchaseYear),
       });
       toast.success("Listing updated successfully");
       setEditingListing(null);
@@ -108,12 +112,39 @@ export default function InventoryPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity (e.g. 100 kg)</Label>
+              <Label htmlFor="quantity">Display Quantity</Label>
               <Input
                 id="quantity"
                 value={editingListing?.quantity || ""}
                 onChange={(e) =>
                   setEditingListing((prev) => (prev ? { ...prev, quantity: e.target.value } : prev))
+                }
+                className="rounded-xl h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stockQuantity">Stock Quantity</Label>
+              <Input
+                id="stockQuantity"
+                type="number"
+                min={1}
+                value={editingListing?.stockQuantity || ""}
+                onChange={(e) =>
+                  setEditingListing((prev) => (prev ? { ...prev, stockQuantity: e.target.value } : prev))
+                }
+                className="rounded-xl h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="purchaseYear">Purchase Year</Label>
+              <Input
+                id="purchaseYear"
+                type="number"
+                min={1980}
+                max={new Date().getFullYear()}
+                value={editingListing?.purchaseYear || ""}
+                onChange={(e) =>
+                  setEditingListing((prev) => (prev ? { ...prev, purchaseYear: e.target.value } : prev))
                 }
                 className="rounded-xl h-11"
               />
@@ -188,6 +219,8 @@ export default function InventoryPage() {
                                 description: listing.description,
                                 pricePerDay: String(listing.pricePerDay ?? ""),
                                 quantity: listing.quantity,
+                                stockQuantity: String(listing.stockQuantity ?? 1),
+                                purchaseYear: String(listing.purchaseYear ?? new Date().getFullYear()),
                               })
                             }
                             className="gap-2 cursor-pointer"
@@ -200,8 +233,8 @@ export default function InventoryPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <Badge variant={listing.status === "available" ? "default" : "secondary"} className="shadow-md">
-                      {listing.status === "available" ? "In Stock" : "Sold Out"}
+                    <Badge variant={listing.availableStock > 0 ? "default" : "secondary"} className="shadow-md">
+                      {listing.availableStock > 0 ? "Available" : "Sold Out"}
                     </Badge>
                     {listing.aiRecommendation && (
                       <Badge className="bg-emerald-500/90 text-white border-none shadow-md backdrop-blur-md gap-1">
@@ -223,7 +256,7 @@ export default function InventoryPage() {
                   </CardTitle>
                   <CardDescription className="flex items-center gap-1">
                     <Package className="size-3" />
-                    {listing.quantity} available
+                    Available Stock: {listing.availableStock ?? listing.stockQuantity ?? 1} / {listing.stockQuantity ?? 1}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 text-sm text-muted-foreground line-clamp-2 h-10">

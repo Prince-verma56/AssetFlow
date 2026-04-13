@@ -7,14 +7,21 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     clerkId: v.string(), 
-    // role is optional initially so we can redirect to onboarding
+    // Keep this field readable for older documents, but new users default to renter/buyer immediately.
     role: v.optional(v.union(v.literal("farmer"), v.literal("buyer"))),
     roles: v.optional(v.array(v.union(v.literal("farmer"), v.literal("buyer")))),
     hasOnboarded: v.boolean(),
     imageUrl: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     phone: v.optional(v.string()),
+    phoneNumber: v.optional(v.string()),
     location: v.optional(
+      v.object({
+        lat: v.number(),
+        lng: v.number(),
+      })
+    ),
+    pickupLocation: v.optional(
       v.object({
         lat: v.number(),
         lng: v.number(),
@@ -24,7 +31,15 @@ export default defineSchema({
     lng: v.optional(v.number()),
     locationUpdatedAt: v.optional(v.number()),
     bio: v.optional(v.string()),
+    address: v.optional(v.string()),
+    cityRegion: v.optional(v.string()),
+    primaryUseCase: v.optional(v.string()),
+    businessName: v.optional(v.string()),
+    kycVerified: v.optional(v.boolean()),
+    joinedAt: v.optional(v.number()),
     trustScore: v.optional(v.number()),
+    followerCount: v.optional(v.number()),
+    lifetimeCompletedOrders: v.optional(v.number()),
   }).index("by_clerkId", ["clerkId"]),
 
   // --- PRODUCT MODULE: LISTINGS (The Farmer's Crop) ---
@@ -37,7 +52,9 @@ export default defineSchema({
     description: v.string(),
     pricePerDay: v.number(),
     quantity: v.string(),
+    stockQuantity: v.optional(v.number()),
     minimumRentalDays: v.optional(v.number()),
+    purchaseYear: v.optional(v.number()),
     condition: v.optional(v.union(v.literal("Like New"), v.literal("Excellent"), v.literal("Good"), v.literal("Fair"))),
     // AI Insights (The 'Wow' Factor)
     aiSuggestedPrice: v.number(),
@@ -46,7 +63,7 @@ export default defineSchema({
     mandiModalPrice: v.optional(v.number()),
     oracleConfidence: v.optional(v.number()),
     oracleRecommendation: v.optional(v.union(v.literal("sell_now"), v.literal("wait"), v.literal("negotiate"))),
-    status: v.union(v.literal("available"), v.literal("sold")),
+    status: v.union(v.literal("available"), v.literal("maintenance"), v.literal("sold")),
     location: v.string(),
     imageUrl: v.optional(v.string()),
     approxLat: v.optional(v.number()),
@@ -55,6 +72,11 @@ export default defineSchema({
     exactLng: v.optional(v.number()),
     qualityScore: v.optional(v.string()),
     qualityChecklist: v.optional(v.string()),
+    // Asset Ledger & Availability Tracking
+    nextAvailableDate: v.optional(v.number()), // Timestamp when asset becomes available after current rental
+    totalRentals: v.optional(v.number()), // Lifetime rental count for this asset (defaults to 0)
+    lifetimeRentals: v.optional(v.number()),
+    averageRating: v.optional(v.number()),
   })
   .index("by_status", ["status"])
   .index("by_farmer", ["farmerId"])
@@ -88,6 +110,7 @@ export default defineSchema({
     rentalStartDate: v.optional(v.union(v.string(), v.number())),
     rentalEndDate: v.optional(v.union(v.string(), v.number())),
     insuranceSelected: v.optional(v.boolean()),
+    dynamicPriceApplied: v.optional(v.number()), // Discount applied (e.g., 0.1 for 10% off)
     createdAt: v.optional(v.number()),
     // Payment Integration Fields
     paymentStatus: v.union(v.literal("pending"), v.literal("paid"), v.literal("failed")),
@@ -130,6 +153,7 @@ export default defineSchema({
   })
   .index("by_buyer", ["buyerId"])
   .index("by_farmer", ["farmerId"])
+  .index("by_listingId", ["listingId"])
   .index("by_status", ["status"]),
 
   wishlist: defineTable({
@@ -148,6 +172,15 @@ export default defineSchema({
     .index("by_renterId", ["renterId"])
     .index("by_renterId_and_ownerId", ["renterId", "ownerId"])
     .index("by_ownerId", ["ownerId"]),
+
+  follows: defineTable({
+    followerId: v.string(),
+    ownerId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_followerId", ["followerId"])
+    .index("by_ownerId", ["ownerId"])
+    .index("by_followerId_and_ownerId", ["followerId", "ownerId"]),
 
   messages: defineTable({
     listingId: v.id("listings"),

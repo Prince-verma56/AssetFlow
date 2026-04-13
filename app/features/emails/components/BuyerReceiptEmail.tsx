@@ -20,6 +20,7 @@ type BuyerReceiptEmailProps = {
   amount: number;
   quantity: string;
   unitPricePerKg: number;
+  unitLabel?: string;
   orderId: string;
   paymentId: string;
   gatewayOrderId: string;
@@ -61,6 +62,7 @@ export function BuyerReceiptEmail({
   amount,
   quantity,
   unitPricePerKg,
+  unitLabel,
   orderId,
   paymentId,
   gatewayOrderId,
@@ -72,6 +74,7 @@ export function BuyerReceiptEmail({
   invoiceDateIso,
 }: BuyerReceiptEmailProps) {
   const invoiceId = `FD-${orderId.slice(-8).toUpperCase()}`;
+  const resolvedUnitLabel = unitLabel || (quantity.toLowerCase().includes("day") ? "day" : "unit");
   const shippingAddress = [
     deliveryAddress.street,
     deliveryAddress.city,
@@ -159,7 +162,7 @@ export function BuyerReceiptEmail({
                   <td style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>{equipment}</td>
                   <td style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>{quantity}</td>
                   <td align="right" style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>
-                    {formatCurrency(unitPricePerKg)}/kg
+                    {formatCurrency(unitPricePerKg)}/{resolvedUnitLabel}
                   </td>
                   <td align="right" style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827", fontWeight: 700 }}>
                     {formatCurrency(amount)}

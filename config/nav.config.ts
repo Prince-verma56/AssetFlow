@@ -37,6 +37,7 @@ export const navConfig: NavConfig = {
   farmerNav: FARMER_ITEMS,
   buyerNav: BUYER_ITEMS,
   farmerSecondaryNav: [
+    { title: "Tracking", href: "/owner/tracking", icon: "Truck" },
     { title: "Map Hub", href: "/map", icon: "MapPin" },
     { title: "Billing", href: "/admin/billing", icon: "CreditCard" },
     { title: "Settings", href: "/admin/settings", icon: "Settings" },
@@ -45,7 +46,7 @@ export const navConfig: NavConfig = {
   buyerSecondaryNav: [
     { title: "Map Hub", href: "/map", icon: "MapPin" },
     { title: "Billing", href: "/marketplace/billing", icon: "CreditCard" },
-    { title: "Settings", href: "/marketplace/settings", icon: "Settings" },
+    { title: "Settings", href: "/renter/settings", icon: "Settings" },
     { title: "Help", href: "/marketplace/help", icon: "CircleHelp" },
   ],
 };

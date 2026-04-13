@@ -37,8 +37,10 @@ export function RoleSwitcher({ role }: RoleSwitcherProps) {
         body: JSON.stringify({ role: nextRole }),
       });
       if (!response.ok) throw new Error("Failed to switch role");
+      const payload = (await response.json()) as { redirectTo?: "/admin" | "/marketplace" };
       toast.success(`Switched to ${roleLabel(nextRole)} workspace`);
-      router.push(roleToDashboard(nextRole));
+      const target = payload.redirectTo ?? roleToDashboard(nextRole);
+      router.replace(target);
       router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Role switch failed";

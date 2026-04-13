@@ -42,7 +42,7 @@ export function RoleGate({ requiredRole, children }: RoleGateProps) {
     if (isResolvingRole) return;
 
     if (!resolvedRole) {
-      router.replace("/onboarding");
+      router.replace("/");
       return;
     }
 
