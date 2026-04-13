@@ -1,0 +1,22 @@
+import Link from "next/link";
+import ThemeToggleButton from "@/components/ui/theme-toggle-button";
+import { RoleSwitcher } from "@/components/navigation/role-switcher";
+
+export default function BuyerLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-[calc(100vh-4rem)]">
+      <header className="sticky top-16 z-20 flex flex-wrap items-center justify-between gap-2 border-b bg-background/90 px-4 py-3 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/buyer/marketplace" className="text-sm">Marketplace</Link>
+          <Link href="/buyer/orders" className="text-sm">Orders</Link>
+          <Link href="/buyer/chat" className="text-sm">Chat</Link>
+        </div>
+        <div className="flex items-center gap-2">
+          <RoleSwitcher role="renter" />
+          <ThemeToggleButton variant="circle-blur" start="top-right" />
+        </div>
+      </header>
+      {children}
+    </div>
+  );
+}
