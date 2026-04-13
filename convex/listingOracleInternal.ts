@@ -12,7 +12,7 @@ export const syncOracleIntoListings = internalMutation({
   handler: async (ctx, args) => {
     const listings = await ctx.db
       .query("listings")
-      .withIndex("by_crop_and_status", (q) => q.eq("cropName", args.commodity).eq("status", "available"))
+      .withIndex("by_status", (q) => q.eq("status", "available"))
       .take(100);
 
     for (const listing of listings) {

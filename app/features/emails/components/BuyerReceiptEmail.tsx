@@ -15,16 +15,16 @@ import {
 } from "@react-email/components";
 
 type BuyerReceiptEmailProps = {
-  buyerName: string;
-  crop: string;
+  renterName: string;
+  equipment: string;
   amount: number;
   quantity: string;
   unitPricePerKg: number;
   orderId: string;
   paymentId: string;
   gatewayOrderId: string;
-  farmerName: string;
-  farmerEmail: string;
+  ownerName: string;
+  ownerEmail: string;
   sourceLocation: string;
   deliveryAddress: {
     street: string;
@@ -56,16 +56,16 @@ const formatDate = (iso: string) => {
 };
 
 export function BuyerReceiptEmail({
-  buyerName,
-  crop,
+  renterName,
+  equipment,
   amount,
   quantity,
   unitPricePerKg,
   orderId,
   paymentId,
   gatewayOrderId,
-  farmerName,
-  farmerEmail,
+  ownerName,
+  ownerEmail,
   sourceLocation,
   deliveryAddress,
   productImageUrl,
@@ -84,7 +84,7 @@ export function BuyerReceiptEmail({
   return (
     <Html>
       <Head />
-      <Preview>{`Invoice ${invoiceId} for your ${crop} purchase`}</Preview>
+      <Preview>{`Invoice ${invoiceId} for your ${equipment} rent`}</Preview>
       <Body style={{ backgroundColor: "#f3f4f6", margin: 0, padding: "24px 0" }}>
         <Container
           style={{
@@ -100,12 +100,12 @@ export function BuyerReceiptEmail({
               FARMDIRECT TAX INVOICE
             </Text>
             <Heading style={{ color: "#ffffff", margin: "8px 0 0", fontSize: "22px" }}>
-              Purchase Confirmed
+              Rent Confirmed
             </Heading>
           </Section>
 
           <Section style={{ padding: "24px 28px 16px" }}>
-            <Text style={{ margin: 0, fontSize: "16px", color: "#111827" }}>Hi {buyerName},</Text>
+            <Text style={{ margin: 0, fontSize: "16px", color: "#111827" }}>Hi {renterName},</Text>
             <Text style={{ margin: "8px 0 0", color: "#374151", lineHeight: "22px" }}>
               Thank you for your order. Your payment was captured successfully, and your invoice is ready.
             </Text>
@@ -126,7 +126,7 @@ export function BuyerReceiptEmail({
               <Column style={{ width: "35%", verticalAlign: "top" }}>
                 <Img
                   src={productImageUrl}
-                  alt={crop}
+                  alt={equipment}
                   width="180"
                   height="120"
                   style={{
@@ -156,7 +156,7 @@ export function BuyerReceiptEmail({
               </thead>
               <tbody>
                 <tr>
-                  <td style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>{crop}</td>
+                  <td style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>{equipment}</td>
                   <td style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>{quantity}</td>
                   <td align="right" style={{ borderTop: "1px solid #e5e7eb", padding: "12px 0", color: "#111827" }}>
                     {formatCurrency(unitPricePerKg)}/kg
@@ -181,13 +181,13 @@ export function BuyerReceiptEmail({
             <Row>
               <Column style={{ width: "50%", verticalAlign: "top", paddingRight: "12px" }}>
                 <Text style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>From (Supplier)</Text>
-                <Text style={{ margin: "6px 0 0", color: "#111827", fontWeight: 600 }}>{farmerName}</Text>
+                <Text style={{ margin: "6px 0 0", color: "#111827", fontWeight: 600 }}>{ownerName}</Text>
                 <Text style={{ margin: "4px 0 0", color: "#374151" }}>{sourceLocation}</Text>
-                <Text style={{ margin: "4px 0 0", color: "#374151" }}>{farmerEmail}</Text>
+                <Text style={{ margin: "4px 0 0", color: "#374151" }}>{ownerEmail}</Text>
               </Column>
               <Column style={{ width: "50%", verticalAlign: "top" }}>
-                <Text style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>Ship To (Buyer)</Text>
-                <Text style={{ margin: "6px 0 0", color: "#111827", fontWeight: 600 }}>{buyerName}</Text>
+                <Text style={{ margin: 0, fontSize: "12px", color: "#6b7280" }}>Ship To (Renter)</Text>
+                <Text style={{ margin: "6px 0 0", color: "#111827", fontWeight: 600 }}>{renterName}</Text>
                 <Text style={{ margin: "4px 0 0", color: "#374151", lineHeight: "20px" }}>{shippingAddress}</Text>
               </Column>
             </Row>

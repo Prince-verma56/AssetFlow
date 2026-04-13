@@ -4,9 +4,9 @@ export default function BuyersPage() {
   return (
     <Card className="bg-card/50 backdrop-blur-md border border-primary/10">
       <CardHeader>
-        <CardTitle>Buyers</CardTitle>
+        <CardTitle>Renters</CardTitle>
         <CardDescription>
-          Buyers workspace is active. Connect this page to Convex data next for full farmer and buyer workflows.
+          Renters workspace is active. Connect this page to Convex data next for full owner and renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>

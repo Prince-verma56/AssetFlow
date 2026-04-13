@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Check, ChevronsUpDown, Sparkles, TrendingUp, Wallet, ArrowRight } from "lucide-react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import type { StatCard } from "@/config/stats.config";
 import type { TableConfig } from "@/config/table.config";
@@ -12,7 +13,6 @@ import { cn } from "@/lib/utils";
 import { MANDI_MARKET_OPTIONS, MANDI_STATE_OPTIONS } from "@/lib/agmarknet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -27,14 +27,14 @@ import { useSearchParams } from "next/navigation";
 type DashboardListingRow = {
   listingId: string;
   id: string; // The actual Convex ID
-  crop: string;
+  equipment: string;
   location: string;
   quantity: string;
   mandiPrice: string;
   fairPrice: string;
   buyerPrice: string;
-  harvestDate: string;
-  daysToHarvest: number;
+  availableFrom: string;
+  daysToAvailable: number;
   oracleAdvice: string;
   rawMandiPrice: number;
   rawFairPrice: number;
@@ -42,17 +42,15 @@ type DashboardListingRow = {
 };
 
 type DashboardContext = {
-  commodity: string;
+  categoryId: string;
   state: string;
   city: string;
-  quantity: number;
-  unit: string;
 };
 
 type DashboardPayload = {
   stats: StatCard[];
   chartData: OracleChartPoint[];
-  tableRows: Array<Omit<DashboardListingRow, "daysToHarvest">>;
+  tableRows: Array<Omit<DashboardListingRow, "daysToAvailable">>;
   processingLabel: string;
   error?: string;
   context?: DashboardContext;
@@ -62,8 +60,29 @@ const initialState: DashboardPayload = {
   stats: [],
   chartData: [],
   tableRows: [],
-  processingLabel: "Processing Market Data...",
+  processingLabel: "Processing Rental Data...",
 };
+
+const defaultFilters: DashboardContext = {
+  categoryId: "farming",
+  state: "Rajasthan",
+  city: "Jaipur",
+};
+
+const RENTAL_CATEGORIES = [
+  { id: "farming", label: "Farming Machinery" },
+  { id: "construction", label: "Construction & Tools" },
+  { id: "electronics", label: "Electronics" },
+  { id: "home_outdoor", label: "Home Appliances" },
+];
+
+function getRentalCategoryLabel(categoryId: string) {
+  return RENTAL_CATEGORIES.find((c) => c.id === categoryId)?.label ?? RENTAL_CATEGORIES[0]?.label ?? "Farming Machinery";
+}
+
+function getRentalCategoryIdFromLabel(label: string) {
+  return RENTAL_CATEGORIES.find((c) => c.label === label)?.id ?? "farming";
+}
 
 function daysFromAnchor(isoDate: string) {
   const target = new Date(`${isoDate}T00:00:00.000Z`);
@@ -111,11 +130,9 @@ function OraclePageContent() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [filters, setFilters] = React.useState<DashboardContext>({
-    commodity: searchParams.get("commodity") || "Wheat",
-    state: searchParams.get("state") || "Rajasthan",
-    city: searchParams.get("city") || "Jaipur",
-    quantity: Number(searchParams.get("quantity")) || 120,
-    unit: "quintal",
+    categoryId: searchParams.get("categoryId") || defaultFilters.categoryId,
+    state: searchParams.get("state") || defaultFilters.state,
+    city: searchParams.get("city") || defaultFilters.city,
   });
 
   const updateListing = useMutation(api.crud.patchListing);
@@ -126,11 +143,9 @@ function OraclePageContent() {
     setIsLoading(true);
     setError(null);
     const query = new URLSearchParams({
-      commodity: context.commodity,
+      categoryId: context.categoryId,
       state: context.state,
       city: context.city,
-      quantity: String(context.quantity),
-      unit: context.unit,
     });
 
     const response = await fetch(`/api/dashboard/command-center?${query.toString()}`, { cache: "no-store" });
@@ -153,33 +168,32 @@ function OraclePageContent() {
   }, [loadDashboard]);
 
   const handleSync = async (row: DashboardListingRow) => {
-    const savings = (row.rawFairPrice - row.rawMandiPrice) * row.rawQuantity;
     try {
       await updateListing({
-        id: row.id as any,
+        id: row.id as Id<"listings">,
         oraclePrice: row.rawFairPrice,
         mandiModalPrice: row.rawMandiPrice,
       });
       toast.success("Listing Updated!", {
-        description: `Middleman Savings: ₹${savings.toLocaleString("en-IN")}`,
+        description: `Advisor rate: ₹${Math.round(row.rawFairPrice).toLocaleString("en-IN")}/day`,
       });
-    } catch (err) {
+    } catch {
       toast.error("Sync failed");
     }
   };
 
   const listingsTableConfig: TableConfig<DashboardListingRow> = React.useMemo(() => ({
-    title: "Sync Oracle to Listings",
-    description: "Update your public marketplace prices with AI insights.",
-    searchKey: "crop",
-    searchPlaceholder: "Filter by crop...",
+    title: "Sync Advisor to Listings",
+    description: "Update your public marketplace pricing with regional rental insights.",
+    searchKey: "equipment",
+    searchPlaceholder: "Filter by equipment...",
     statusKey: "oracleAdvice",
     pageSize: 5,
     columns: [
-      { key: "crop", header: "Crop", sortable: true },
-      { key: "mandiPrice", header: "Mandi Rate", sortable: true },
-      { key: "fairPrice", header: "AI Fair Price", sortable: true },
-      { key: "oracleAdvice", header: "Advice", type: "status", cell: (row) => renderStatusBadge(row.oracleAdvice) },
+      { key: "equipment", header: "Equipment", sortable: true },
+      { key: "mandiPrice", header: "Market Rate", sortable: true },
+      { key: "fairPrice", header: "Advisor Rate", sortable: true },
+      { key: "oracleAdvice", header: "Rental Advice", type: "status", cell: (row) => renderStatusBadge(row.oracleAdvice) },
       {
         key: "id",
         header: "Action",
@@ -190,7 +204,7 @@ function OraclePageContent() {
         )
       }
     ],
-  }), []);
+  }), [handleSync]);
 
   return (
     <div className="space-y-8 max-w-[1400px] mx-auto pb-20">
@@ -199,24 +213,35 @@ function OraclePageContent() {
           <Sparkles className="size-8 text-primary" />
           AI Price Oracle
         </h1>
-        <p className="text-muted-foreground font-medium">Tuesday, April 7, 2026 • Real-time Mandi Analysis</p>
+        <p className="text-muted-foreground font-medium">Tuesday, April 7, 2026 • Real-time Rental Analysis</p>
       </div>
 
       <Card className="border-none bg-primary/5 backdrop-blur-xl rounded-[2rem]">
         <CardContent className="p-8">
-          <form className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5 items-end" onSubmit={(e) => { e.preventDefault(); loadDashboard(filters); }}>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Commodity</Label>
-              <Input value={filters.commodity} onChange={(e) => setFilters(p => ({ ...p, commodity: e.target.value }))} className="rounded-xl h-12 border-primary/10" />
-            </div>
-            <ComboboxField label="State" value={filters.state} options={[...MANDI_STATE_OPTIONS]} onSelect={(s) => setFilters(p => ({ ...p, state: s }))} />
-            <ComboboxField label="Mandi City" value={filters.city} options={cityOptions} onSelect={(c) => setFilters(p => ({ ...p, city: c }))} />
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity (q)</Label>
-              <Input type="number" value={filters.quantity} onChange={(e) => setFilters(p => ({ ...p, quantity: Number(e.target.value) }))} className="rounded-xl h-12 border-primary/10" />
-            </div>
+          <form className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 items-end" onSubmit={(e) => { e.preventDefault(); loadDashboard(filters); }}>
+            <ComboboxField
+              label="Asset Category"
+              value={getRentalCategoryLabel(filters.categoryId)}
+              options={RENTAL_CATEGORIES.map((c) => c.label)}
+              onSelect={(label) => setFilters((p) => ({ ...p, categoryId: getRentalCategoryIdFromLabel(label) }))}
+            />
+            <ComboboxField
+              label="State"
+              value={filters.state}
+              options={[...MANDI_STATE_OPTIONS]}
+              onSelect={(state) => {
+                const nextCity = (MANDI_MARKET_OPTIONS[state] ?? [""])[0] || "";
+                setFilters((p) => ({ ...p, state, city: nextCity }));
+              }}
+            />
+            <ComboboxField
+              label="City/Region"
+              value={filters.city}
+              options={cityOptions}
+              onSelect={(city) => setFilters((p) => ({ ...p, city }))}
+            />
             <Button type="submit" className="h-12 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl" disabled={isLoading}>
-              {isLoading ? "Running Oracle..." : "Run Live Oracle"}
+              {isLoading ? "Running Advisor..." : "Run Price Advisor"}
             </Button>
           </form>
         </CardContent>
@@ -243,9 +268,11 @@ function OraclePageContent() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-zinc-400 leading-relaxed italic">
-                    "{dashboard.tableRows[0]?.oracleAdvice === "Sell Now" 
-                      ? "Arrivals are peaking. Current prices are 8% above seasonal averages. High confidence for immediate liquidation." 
-                      : "Procurement targets haven't been met. Waiting 7-10 days could yield a 500/quintal premium as supply tightens."}"
+                    &ldquo;
+                    {dashboard.tableRows[0]?.oracleAdvice === "Good Deal"
+                      ? "Listings in this region are currently priced below the local average. Great moment to attract renters quickly."
+                      : "Rates are trending premium versus the local average. Consider adjusting price or improving listing quality for faster bookings."}
+                    &rdquo;
                   </p>
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
                     <div className="flex items-center gap-2 mb-2 text-zinc-400">
@@ -259,7 +286,7 @@ function OraclePageContent() {
                 </CardContent>
               </Card>
             </div>
-            <DataTable config={listingsTableConfig} data={dashboard.tableRows.map(r => ({ ...r, daysToHarvest: 0 }))} />
+            <DataTable config={listingsTableConfig} data={dashboard.tableRows.map(r => ({ ...r, daysToAvailable: 0 }))} />
           </div>
         </ClientAnimationWrapper>
       )}

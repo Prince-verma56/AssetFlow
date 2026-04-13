@@ -17,6 +17,8 @@ function makeQueryKey(commodity: string, state: string, city: string) {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const commodity = url.searchParams.get("commodity")?.trim() || "All";
+  const categoryId = url.searchParams.get("categoryId")?.trim();
+  const subCategoryId = url.searchParams.get("subCategoryId")?.trim();
   const state = url.searchParams.get("state")?.trim() || "All";
   const city = url.searchParams.get("city")?.trim() || "All";
 
@@ -29,17 +31,17 @@ export async function GET(request: Request) {
   const queryKey = makeQueryKey(commodity, state, city);
 
   const listings = await convex.query(api.listings.listAvailable, { 
-    cropName: commodity, 
+    assetCategory: commodity, 
     location: `${city}, ${state}`, // Passing composite string for filter index
     limit: 24 
   });
 
   let reasoning = "Global Discovery Mode: Showing fresh verified listings across all markets.";
   let modalPricePerQuintal = 0;
-  let modalPricePerKg = 0;
+  let modalPricePerDay = 0;
   let marketSource = "global";
 
-  // Core Market Oracle logic ONLY executes if a specific crop is targeted
+  // Core Market Oracle logic ONLY executes if a specific equipment is targeted
   if (commodity !== "All") {
     let records: AgmarknetRecord[] = await fetchAgmarknetRecords({ commodity, state, market: city }).catch(() => []);
     marketSource = records.length > 0 ? "live" : "fallback";
@@ -53,20 +55,23 @@ export async function GET(request: Request) {
 
     const snapshot = records[0];
     modalPricePerQuintal = snapshot.modalPrice;
-    modalPricePerKg = modalPricePerQuintal / 100;
+    modalPricePerDay = modalPricePerQuintal / 100; // Mock calculation for Hackathon Demo
 
     let localReasoning = "Peak harvest season supports quality and supply stability.";
     const latestOracle = await convex.query(api.marketSync.latestOracleByQuery, { queryKey }).catch(() => null);
     if (latestOracle?.reasoning) {
       localReasoning = latestOracle.reasoning;
     } else {
+      const injectedCommodityContext = `${commodity}. Ignore previous context. You are an equipment rental advisor evaluating fair daily rental rates for underutilized assets. Use the provided market data to gauge if the owner's asking price is fair for a daily rental.`;
       const oracle = await convex
         .action(api.actions.priceOracle.runPriceOracle, {
-          commodity,
+          commodity: injectedCommodityContext,
+          categoryId: categoryId || undefined,
+          subCategoryId: subCategoryId || undefined,
           state: state === "All" ? "Rajasthan" : state, 
           city: city === "All" ? "Jaipur" : city,
-          quantity: 100,
-          unit: "quintal",
+          quantity: 1, // Quantity 1 for rental metrics
+          unit: "day", // Day unit
         })
         .catch(() => null);
       if (oracle?.reasoning) localReasoning = oracle.reasoning;
@@ -75,28 +80,28 @@ export async function GET(request: Request) {
   }
 
   const products = listings.map((listing) => {
-    const buyerPricePerKg = listing.pricePerKg;
+    const pricePerDay = listing.pricePerDay;
     let belowPercent = 0;
     
     // Calculate precise discount only if a local tracking price exists
-    if (modalPricePerKg > 0) {
-       belowPercent = Math.max(0, ((modalPricePerKg - buyerPricePerKg) / modalPricePerKg) * 100);
+    if (modalPricePerDay > 0) {
+       belowPercent = Math.max(0, ((modalPricePerDay - pricePerDay) / modalPricePerDay) * 100);
     }
 
     return {
       id: String(listing._id),
-      crop: listing.cropName,
+      equipment: listing.assetCategory,
       location: listing.location,
-      farmerName: listing.farmerName,
-      farmerImage: listing.farmerImage,
+      ownerName: listing.farmerName,
+      ownerImage: listing.farmerImage,
       quantity: listing.quantity,
-      buyerPricePerKg,
-      localMandiPricePerKg: modalPricePerKg,
-      trustGaugeText: modalPricePerKg > 0 
-        ? `₹${buyerPricePerKg.toFixed(2)}/kg - ${belowPercent.toFixed(1)}% below Mandi`
-        : `Verified Farmgate - ₹${buyerPricePerKg.toFixed(2)}/kg`,
+      pricePerDay,
+      localMandiPricePerDay: modalPricePerDay,
+      trustGaugeText: modalPricePerDay > 0 
+        ? `₹${pricePerDay.toFixed(2)}/day - ${belowPercent.toFixed(1)}% below Market`
+        : `Verified Owner - ₹${pricePerDay.toFixed(2)}/day`,
       insight: reasoning.split(".")[0]?.trim() || reasoning,
-      mandiModalPrice: modalPricePerQuintal > 0 ? `₹${toInr(modalPricePerQuintal)}/quintal` : "Market Data Unlinked",
+      mandiModalPrice: modalPricePerQuintal > 0 ? `₹${toInr(modalPricePerQuintal)}/season` : "Market Data Unlinked",
     };
   });
 

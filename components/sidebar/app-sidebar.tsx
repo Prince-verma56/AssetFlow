@@ -50,7 +50,7 @@ export function AppSidebar() {
       setRole(convexUser.role);
       return;
     }
-    setRole(pathname.startsWith("/marketplace") ? "buyer" : "farmer");
+    setRole(pathname.startsWith("/marketplace") || pathname.startsWith("/renter") ? "buyer" : "farmer");
   }, [pathname, convexUser]);
 
   const isFarmer = role === "farmer";

@@ -6,7 +6,7 @@ export default function UploadsPage() {
       <CardHeader>
         <CardTitle>Uploads</CardTitle>
         <CardDescription>
-          Uploads workspace is active. Connect this page to Convex data next for full farmer and buyer workflows.
+          Uploads workspace is active. Connect this page to Convex data next for full owner and renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>

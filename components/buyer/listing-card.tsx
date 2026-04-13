@@ -1,10 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { ASSET_CATEGORIES } from "@/lib/constants/categories";
 import type { BuyerListing } from "@/components/buyer/listing-detail-sheet";
+import { ListingMedia } from "@/components/listings/listing-media";
 
 export type ListingCardProps = {
   listing: BuyerListing;
@@ -13,8 +14,12 @@ export type ListingCardProps = {
 };
 
 export function ListingCard({ listing, onViewDetails, onQuickAdd }: ListingCardProps) {
-  const bestDeal =
-    typeof listing.mandiModalPrice === "number" && listing.pricePerKg < listing.mandiModalPrice;
+  const bestDeal = typeof listing.mandiModalPrice === "number" && listing.pricePerDay < listing.mandiModalPrice;
+
+  // Resolve subcategory name gracefully
+  const mainCat = ASSET_CATEGORIES.find(c => c.id === listing.categoryId);
+  const subCatName = mainCat?.subCategories.find(s => s.id === listing.subCategoryId)?.name;
+  const displayCategory = subCatName || listing.assetCategory.split(" - ")[1] || listing.assetCategory;
 
   return (
     <Card
@@ -24,27 +29,31 @@ export function ListingCard({ listing, onViewDetails, onQuickAdd }: ListingCardP
     >
       <CardHeader className="p-0">
         <div className="relative overflow-hidden rounded-t-xl">
-          <Image
-            src={listing.imageUrl || "/placeholder-farmer.png"}
-            alt={listing.cropName}
-            width={800}
-            height={600}
-            className="aspect-[4/3] h-auto w-full object-cover"
-          />
+          <div className="aspect-[4/3]">
+            <ListingMedia
+              imageUrl={listing.imageUrl}
+              alt={listing.assetCategory}
+              title={listing.assetCategory}
+              subtitle={listing.location}
+            />
+          </div>
           <div className="absolute left-2 top-2 flex flex-wrap gap-1">
             <Badge variant="outline" className="bg-background/90">
               {listing.qualityScore ? `${listing.qualityScore} Grade` : "Grade Pending"}
             </Badge>
             {listing.oraclePrice ? <Badge className="bg-primary text-primary-foreground">AI Verified</Badge> : null}
             <Badge variant="outline" className="bg-background/90">
-              Direct Farm
+              Verified Owner
             </Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-2 pt-4">
-        <h3 className="text-base font-medium">{listing.cropName}</h3>
-        <p className="text-xl font-black text-primary">₹{listing.pricePerKg.toFixed(2)}/kg</p>
+        <div className="flex justify-between items-start gap-2">
+           <h3 className="text-base font-medium leading-tight">{listing.assetCategory.split(" - ")[0]}</h3>
+           <Badge variant="secondary" className="text-[10px] bg-muted shrink-0 text-muted-foreground">{displayCategory}</Badge>
+        </div>
+        <p className="text-xl font-black text-primary">₹{listing.pricePerDay?.toFixed(2) || '0.00'}/day</p>
         <p className="text-sm text-muted-foreground">Available: {listing.quantity}</p>
         <p className="text-sm text-muted-foreground">Distance: {listing.distanceKm.toFixed(1)} km</p>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -1,26 +1,12 @@
 import { ConvexHttpClient } from "convex/browser";
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { api } from "@/convex/_generated/api";
-import { fetchAgmarknetRecords, seasonalFallbackRecords, sortAgmarknetByDate, type AgmarknetRecord } from "@/lib/agmarknet";
 import { ANCHOR_DATE_ISO, ANCHOR_DATE_LABEL } from "@/lib/time-anchor";
 
-type OracleResponse = {
-  fairPrice: number;
-  confidence: number;
-  recommendation: "sell_now" | "wait" | "negotiate";
-  reasoning: string;
-  forecast14: number[];
-  mandiDate?: string | null;
-  mandiModalPrice?: number;
-};
-
 const DEFAULT_CONTEXT = {
-  commodity: "Wheat",
+  categoryId: "farming",
   state: "Rajasthan",
   city: "Jaipur",
-  quantity: 120,
-  unit: "quintal",
 };
 
 function toInr(value: number) {
@@ -35,243 +21,136 @@ function addDays(isoDate: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function makeQueryKey(commodity: string, state: string, city: string) {
-  return `${commodity.trim().toLowerCase()}::${state.trim().toLowerCase()}::${city.trim().toLowerCase()}`;
-}
-
 function parseQuantityToNumber(raw: string | undefined, fallback: number) {
   if (!raw) return fallback;
   const parsed = Number(String(raw).replace(/[^\d.]/g, ""));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+type DashboardListing = {
+  _id: string;
+  _creationTime?: number;
+  title?: string;
+  assetCategory?: string;
+  quantity?: string;
+  pricePerDay?: number;
+  location: string;
+};
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const context = {
-    commodity: url.searchParams.get("commodity")?.trim() || DEFAULT_CONTEXT.commodity,
+    categoryId: url.searchParams.get("categoryId")?.trim() || DEFAULT_CONTEXT.categoryId,
     state: url.searchParams.get("state")?.trim() || DEFAULT_CONTEXT.state,
     city: url.searchParams.get("city")?.trim() || DEFAULT_CONTEXT.city,
-    quantity: Number(url.searchParams.get("quantity") || DEFAULT_CONTEXT.quantity),
-    unit: url.searchParams.get("unit")?.trim() || DEFAULT_CONTEXT.unit,
   };
-
-  if (!Number.isFinite(context.quantity) || context.quantity <= 0) {
-    return NextResponse.json({ error: "Quantity must be a positive number." }, { status: 400 });
-  }
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!convexUrl) {
     return NextResponse.json({ error: "NEXT_PUBLIC_CONVEX_URL is missing." }, { status: 500 });
   }
 
-  console.log(`[Dashboard] Fetching Agmarknet for ${context.commodity} in ${context.city}, ${context.state}`);
-  let records: AgmarknetRecord[] = await fetchAgmarknetRecords({
-    commodity: context.commodity,
-    state: context.state,
-    market: context.city,
-  }).catch((err) => {
-    console.error("[Dashboard] Agmarknet fetch failed:", err);
-    return [];
-  });
-
-  const marketSource = records.length > 0 ? "live" : "fallback";
-  console.log(`[Dashboard] Market Source: ${marketSource}`);
-  
-  if (records.length === 0) {
-    records = seasonalFallbackRecords({
-      commodity: context.commodity,
-      state: context.state,
-      market: context.city,
-    });
-  }
-
-  const snapshot = records[0];
-  const modalPrice = snapshot.modalPrice;
-
   const convex = new ConvexHttpClient(convexUrl);
-  
-  let token: string | null = null;
-  try {
-    const { getToken } = await auth();
-    token = await getToken({ template: "convex" });
-    if (token) {
-      convex.setAuth(token);
-    }
-  } catch (e) {
-    console.warn("[Dashboard] Clerk convex JWT template missing, skipping authenticated mutations.");
-  }
+  const location = `${context.city}, ${context.state}`;
 
-  let oracle: OracleResponse;
-  try {
-    oracle = await convex.action(api.actions.priceOracle.runPriceOracle, {
-      commodity: context.commodity,
-      state: context.state,
-      city: context.city,
-      quantity: context.quantity,
-      unit: context.unit,
-    });
-  } catch {
-    const fallbackFairPrice = Math.round(modalPrice * 1.05);
-    oracle = {
-      fairPrice: fallbackFairPrice,
-      confidence: 50,
-      recommendation: "negotiate",
-      reasoning: "Oracle unavailable. Using seasonal April 2026 estimate.",
-      forecast14: Array.from({ length: 14 }, (_, index) => fallbackFairPrice + Math.round(Math.sin(index / 2) * 35)),
-      mandiDate: snapshot.date,
-      mandiModalPrice: modalPrice,
-    };
-  }
-
-  const revenue = await convex.query(api.analytics.aprilRevenueMtd, {}).catch(() => ({ totalRevenue: 0 }));
-
-  const buyerPricePerKg = oracle.fairPrice / 100;
-  const queryKey = makeQueryKey(context.commodity, context.state, context.city);
-
-  await convex
-    .mutation(api.marketSync.syncMarketRun, {
-      queryKey,
-      anchorDate: ANCHOR_DATE_ISO,
-      commodity: context.commodity,
-      state: context.state,
-      city: context.city,
-      quantity: context.quantity,
-      unit: context.unit,
-      mandiDate: oracle.mandiDate ?? snapshot.date,
-      snapshots: records.map((record) => ({
-        date: record.date,
-        minPrice: record.minPrice,
-        maxPrice: record.maxPrice,
-        modalPrice: record.modalPrice,
-        isHistorical: record.isHistorical,
-      })),
-      oracle: {
-        fairPrice: oracle.fairPrice,
-        buyerPricePerKg,
-        confidence: oracle.confidence,
-        recommendation: oracle.recommendation,
-        reasoning: oracle.reasoning,
-        forecast14: oracle.forecast14,
-      },
+  const listings = await convex
+    .query(api.listings.listAvailable, {
+      categoryId: context.categoryId,
+      location,
+      limit: 40,
     })
-    .catch(() => null);
+    .catch(() => [] as DashboardListing[]);
 
-  if (token) {
-    await convex
-      .mutation(api.listings.updateFarmerOracleData, {
-        cropName: context.commodity,
-        oraclePrice: oracle.fairPrice,
-        mandiModalPrice: modalPrice,
-        oracleRecommendation: oracle.recommendation,
-        oracleConfidence: oracle.confidence,
-      })
-      .catch(() => null);
-  }
+  const avgPricePerDay =
+    listings.length > 0
+      ? Math.round(listings.reduce((sum, listing) => sum + (listing.pricePerDay ?? 0), 0) / listings.length)
+      : 0;
 
-  const listings = await convex.query(api.listings.listAvailable, {
-    cropName: context.commodity,
-    limit: 40,
+  const chartData = Array.from({ length: 30 }, (_, index) => {
+    const dayOffset = index - 14;
+    const date = addDays(ANCHOR_DATE_ISO, dayOffset);
+    if (dayOffset <= 0) {
+      return { date, historicalPrice: avgPricePerDay, forecastPrice: undefined as number | undefined };
+    }
+    const drift = Math.round(Math.sin(index / 3) * Math.max(10, avgPricePerDay * 0.03));
+    return { date, historicalPrice: undefined as number | undefined, forecastPrice: Math.max(0, avgPricePerDay + drift) };
   });
 
-  const firstListing = listings[0];
-  const listingOraclePrice = firstListing?.oraclePrice ?? oracle.fairPrice;
-  const listingMandiPrice = firstListing?.mandiModalPrice ?? modalPrice;
-  const listingQuantity = parseQuantityToNumber(firstListing?.quantity, context.quantity);
-  const listingRecommendation =
-    firstListing?.oracleRecommendation ?? oracle.recommendation;
-
-  const potentialProfit = (listingOraclePrice - listingMandiPrice) * listingQuantity;
-
-
-  const historicalData = sortAgmarknetByDate(records)
-    .filter((record) => record.date <= ANCHOR_DATE_ISO)
-    .map((record) => ({
-      date: record.date,
-      historicalPrice: record.modalPrice,
-      forecastPrice: undefined as number | undefined,
-    }));
-
-  const forecastData = oracle.forecast14.map((value, index) => ({
-    date: addDays(ANCHOR_DATE_ISO, index + 1),
-    historicalPrice: undefined as number | undefined,
-    forecastPrice: Math.round(value),
-  }));
+  const prices = listings.map((l) => Number(l.pricePerDay ?? 0)).filter((v) => Number.isFinite(v) && v > 0);
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  const maxPrice = prices.length ? Math.max(...prices) : 0;
 
   return NextResponse.json({
     anchorDateIso: ANCHOR_DATE_ISO,
     anchorDateLabel: ANCHOR_DATE_LABEL,
     processingLabel: "Processing Rental Data...",
     context,
-    marketSource,
     stats: [
       {
-        id: "live-market-pulse",
-        title: "Market Rental Rate",
-        value: `₹${toInr(listingMandiPrice)}/quintal`,
-        delta: snapshot.isHistorical ? "Historical" : "Live",
-        trend: snapshot.isHistorical ? "neutral" : "up",
-        subtitle: "Regional market rate",
+        id: "active-listings",
+        title: "Active Listings",
+        value: `${listings.length}`,
+        delta: "Live",
+        trend: "up",
+        subtitle: location,
         asOfLabel: `As of ${ANCHOR_DATE_LABEL}`,
-        livePulse: !snapshot.isHistorical,
-        icon: "Activity",
+        livePulse: true,
+        icon: "Package",
       },
       {
-        id: "ai-fair-price",
-        title: "Recommended Rental Rate",
-        value: `₹${toInr(listingOraclePrice)}/quintal`,
-        delta: `${(firstListing?.oracleConfidence ?? oracle.confidence).toFixed(0)}% confidence`,
-        trend: listingRecommendation === "wait" ? "down" : "up",
-        subtitle: "Current advisor guidance",
-        icon: "Sparkles",
-      },
-      {
-        id: "middleman-savings",
-        title: "Expected Rental Value",
-        value: `₹${toInr(Math.max(potentialProfit, 0))}`,
-        delta: `${listingQuantity} quintal`,
-        trend: potentialProfit >= 0 ? "up" : "down",
-        subtitle: "(Advisor - market) x quantity",
+        id: "avg-rate",
+        title: "Avg Daily Rate",
+        value: avgPricePerDay > 0 ? `₹${toInr(avgPricePerDay)}/day` : "—",
+        delta: "Local snapshot",
+        trend: "neutral",
+        subtitle: "Based on filtered listings",
         icon: "Wallet",
       },
       {
-        id: "revenue-april",
-        title: "Rental Revenue",
-        value: `₹${toInr(Number(revenue.totalRevenue ?? 0))}`,
-        delta: "Apr 1 - Apr 7",
-        trend: "up",
-        subtitle: "April 2026 earnings",
-        icon: "CreditCard",
+        id: "price-band",
+        title: "Price Band",
+        value: prices.length ? `₹${toInr(minPrice)} - ₹${toInr(maxPrice)}` : "—",
+        delta: "Per day",
+        trend: "neutral",
+        subtitle: "Low to high",
+        icon: "Activity",
+      },
+      {
+        id: "coverage",
+        title: "Coverage",
+        value: location,
+        delta: "Region filter",
+        trend: "neutral",
+        subtitle: "City/Region + State",
+        icon: "MapPin",
       },
     ],
-    chartData: [...historicalData, ...forecastData],
-    tableRows: listings.slice(0, 20).map((listing, index) => {
-      const qty = parseQuantityToNumber(listing.quantity, context.quantity);
-      const mandi = listing.mandiModalPrice ?? listingMandiPrice;
-      const fair = listing.oraclePrice ?? listingOraclePrice;
-      const rec = listing.oracleRecommendation ?? oracle.recommendation;
-      const advice = rec === "sell_now" ? "Sell Now" : rec === "wait" ? "Wait" : "Negotiate";
+    chartData,
+    tableRows: listings.slice(0, 20).map((listing, index: number) => {
+      const qty = parseQuantityToNumber(listing.quantity, 1);
+      const listingPricePerDay = typeof listing.pricePerDay === "number" ? listing.pricePerDay : 0;
+      const createdAtIso =
+        typeof listing._creationTime === "number"
+          ? new Date(listing._creationTime).toISOString().slice(0, 10)
+          : ANCHOR_DATE_ISO;
+      const advice = avgPricePerDay > 0 && listingPricePerDay > 0 && listingPricePerDay <= avgPricePerDay ? "Good Deal" : "Premium";
 
       return {
-        listingId: `LST-${index + 1}`,
+        listingId: `EQ-${index + 1}`,
         id: listing._id,
-        crop: listing.cropName,
+        equipment: listing.title ?? listing.assetCategory,
         location: listing.location,
-        quantity: `${qty} ${context.unit}`,
-        mandiPrice: `₹${toInr(mandi)}/quintal`,
-        fairPrice: `₹${toInr(fair)}/quintal`,
-        buyerPrice: `₹${(fair / 100).toFixed(2)}/kg`,
-        harvestDate: addDays(ANCHOR_DATE_ISO, 4 + (index % 8)),
+        quantity: `${qty} units`,
+        mandiPrice: avgPricePerDay > 0 ? `₹${toInr(avgPricePerDay)}/day` : "—",
+        fairPrice: avgPricePerDay > 0 ? `₹${toInr(avgPricePerDay)}/day` : "—",
+        buyerPrice: listingPricePerDay > 0 ? `₹${toInr(listingPricePerDay)}/day` : "—",
+        availableFrom: createdAtIso,
         oracleAdvice: advice,
-        rawMandiPrice: mandi,
-        rawFairPrice: fair,
+        rawMandiPrice: avgPricePerDay,
+        rawFairPrice: avgPricePerDay,
         rawQuantity: qty,
       };
     }),
-    oracle: {
-      fairPrice: oracle.fairPrice,
-      confidence: oracle.confidence,
-      recommendation: oracle.recommendation,
-      reasoning: oracle.reasoning,
-    },
   });
 }
+

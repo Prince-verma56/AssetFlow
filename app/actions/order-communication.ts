@@ -4,11 +4,11 @@ import { getCropImage } from "@/lib/asset-mapping";
 import { sendBuyerReceiptEmail, sendFarmerSaleAlert } from "@/lib/mails/mails";
 
 export async function processOrderCommunication({
-  buyerEmail,
-  buyerName,
-  farmerEmail,
-  farmerName,
-  cropName,
+  renterEmail,
+  renterName,
+  ownerEmail,
+  ownerName,
+  assetCategory,
   amount,
   orderId,
   paymentId,
@@ -19,11 +19,11 @@ export async function processOrderCommunication({
   deliveryAddress,
   productImageUrl,
 }: {
-  buyerEmail: string;
-  buyerName: string;
-  farmerEmail: string;
-  farmerName: string;
-  cropName: string;
+  renterEmail: string;
+  renterName: string;
+  ownerEmail: string;
+  ownerName: string;
+  assetCategory: string;
   amount: number;
   orderId: string;
   paymentId: string;
@@ -41,20 +41,20 @@ export async function processOrderCommunication({
 }) {
   try {
     const invoiceDate = new Date().toISOString();
-    const resolvedProductImage = productImageUrl || getCropImage(cropName);
+    const resolvedProductImage = productImageUrl || getCropImage(assetCategory);
 
     await sendBuyerReceiptEmail({
-      buyerName,
-      buyerEmail,
-      crop: cropName,
+      buyerName: renterName,
+      buyerEmail: renterEmail,
+      crop: assetCategory,
       amount,
       quantity,
       unitPricePerKg,
       orderId,
       paymentId,
       gatewayOrderId,
-      farmerName,
-      farmerEmail,
+      farmerName: ownerName,
+      farmerEmail: ownerEmail,
       sourceLocation,
       deliveryAddress,
       productImageUrl: resolvedProductImage,
@@ -62,10 +62,10 @@ export async function processOrderCommunication({
     });
 
     await sendFarmerSaleAlert({
-      farmerEmail,
-      buyerName,
-      farmerName,
-      crop: cropName,
+      farmerEmail: ownerEmail,
+      buyerName: renterName,
+      farmerName: ownerName,
+      crop: assetCategory,
       amount,
       orderId,
       sourceLocation,

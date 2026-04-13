@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -15,21 +15,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ListingCard } from "@/components/buyer/listing-card";
 import { ListingDetailSheet, type BuyerListing } from "@/components/buyer/listing-detail-sheet";
 
-const categories = ["All", "Cereals", "Vegetables", "Pulses", "Fruits", "Oilseeds"];
+import { ASSET_CATEGORIES } from "@/lib/constants/categories";
+import { useRouter, useSearchParams } from "next/navigation";
 
-function getCategory(cropName: string) {
-  const crop = cropName.toLowerCase();
-  if (["wheat", "rice", "paddy", "maize", "bajra", "jowar"].some((x) => crop.includes(x))) return "Cereals";
-  if (["onion", "tomato", "potato"].some((x) => crop.includes(x))) return "Vegetables";
-  if (["gram", "tur", "moong", "urad"].some((x) => crop.includes(x))) return "Pulses";
-  if (["apple", "banana"].some((x) => crop.includes(x))) return "Fruits";
-  return "Oilseeds";
-}
-
-export default function BuyerMarketplacePage() {
+function BuyerMarketplacePageContent() {
   const { user } = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawCategoryId = searchParams.get("category");
+  // Default to "All" if missing/invalid, else use the raw category.
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
+  const category = rawCategoryId && ASSET_CATEGORIES.some(c => c.id === rawCategoryId) ? rawCategoryId : "All";
+  
+  const setCategory = (catId: string) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+    if (catId === "All") {
+      newParams.delete("category");
+    } else {
+      newParams.set("category", catId);
+    }
+    router.replace(`?${newParams.toString()}`);
+  };
   const [priceRange, setPriceRange] = useState([0, 300]);
   const [distanceKm, setDistanceKm] = useState([50]);
   const [sortBy, setSortBy] = useState("distance");
@@ -43,7 +49,7 @@ export default function BuyerMarketplacePage() {
   const nearby = useQuery(
     api.listings.getListingsNearby,
     typeof lat === "number" && typeof lng === "number"
-      ? { lat, lng, radiusKm: distanceKm[0], limit: 150 }
+      ? { lat, lng, radiusKm: distanceKm[0], limit: 150, categoryId: category }
       : "skip"
   );
 
@@ -51,15 +57,17 @@ export default function BuyerMarketplacePage() {
     const raw = nearby?.success ? nearby.data : [];
     const mapped = raw.map((item) => ({
       id: item.id,
-      cropName: item.cropName,
+      assetCategory: item.assetCategory,
       description: item.description,
-      pricePerKg: item.pricePerKg,
+      pricePerDay: item.pricePerDay,
       quantity: item.quantity,
       location: item.location,
       imageUrl: item.imageUrl,
       farmerId: item.farmerId,
       farmerName: item.farmerName,
       farmerImage: item.farmerImage,
+      categoryId: item.categoryId || "farming", // Fallback for old data
+      subCategoryId: item.subCategoryId || "tractor",
       approxLat: item.approxLat,
       approxLng: item.approxLng,
       distanceKm: item.distanceKm,
@@ -71,15 +79,15 @@ export default function BuyerMarketplacePage() {
     const filtered = mapped.filter((listing) => {
       const matchesQuery =
         query.trim().length === 0 ||
-        listing.cropName.toLowerCase().includes(query.toLowerCase()) ||
+        listing.assetCategory.toLowerCase().includes(query.toLowerCase()) ||
         listing.location.toLowerCase().includes(query.toLowerCase());
-      const matchesCategory = category === "All" || getCategory(listing.cropName) === category;
-      const matchesPrice = listing.pricePerKg >= priceRange[0] && listing.pricePerKg <= priceRange[1];
+      const matchesCategory = category === "All" || listing.categoryId === category;
+      const matchesPrice = listing.pricePerDay >= priceRange[0] && listing.pricePerDay <= priceRange[1];
       return matchesQuery && matchesCategory && matchesPrice;
     });
 
-    if (sortBy === "price_low") filtered.sort((a, b) => a.pricePerKg - b.pricePerKg);
-    if (sortBy === "price_high") filtered.sort((a, b) => b.pricePerKg - a.pricePerKg);
+    if (sortBy === "price_low") filtered.sort((a, b) => a.pricePerDay - b.pricePerDay);
+    if (sortBy === "price_high") filtered.sort((a, b) => b.pricePerDay - a.pricePerDay);
     if (sortBy === "distance") filtered.sort((a, b) => a.distanceKm - b.distanceKm);
 
     return filtered;
@@ -87,6 +95,28 @@ export default function BuyerMarketplacePage() {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
+      {/* Horizontal Category Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <Button
+          variant={category === "All" ? "default" : "outline"}
+          className="rounded-full shrink-0"
+          onClick={() => setCategory("All")}
+        >
+          All
+        </Button>
+        {ASSET_CATEGORIES.map((item) => (
+          <Button
+            key={item.id}
+            variant={item.id === category ? "default" : "outline"}
+            className="rounded-full gap-2 shrink-0"
+            onClick={() => setCategory(item.id)}
+          >
+            <item.icon className="size-4" />
+            {item.name}
+          </Button>
+        ))}
+      </div>
+
       <div className="sticky top-16 z-10 rounded-xl border bg-background/95 p-3 backdrop-blur">
         <div className="grid gap-2 md:grid-cols-[1fr_220px_220px]">
           <div className="relative">
@@ -114,23 +144,7 @@ export default function BuyerMarketplacePage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <p className="text-sm font-medium">Category</p>
-              <div className="flex flex-wrap gap-2">
-                {categories.map((item) => (
-                  <Badge
-                    key={item}
-                    variant={item === category ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => setCategory(item)}
-                  >
-                    {item}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Price Range (₹/kg)</p>
+              <p className="text-sm font-medium">Price Range (₹/day)</p>
               <Slider value={priceRange} min={0} max={300} step={1} onValueChange={setPriceRange} />
               <p className="text-xs text-muted-foreground">
                 ₹{priceRange[0]} - ₹{priceRange[1]}
@@ -165,5 +179,13 @@ export default function BuyerMarketplacePage() {
 
       <ListingDetailSheet open={Boolean(selectedListing)} onOpenChange={(open) => !open && setSelectedListing(null)} listing={selectedListing} />
     </div>
+  );
+}
+
+export default function BuyerMarketplacePage() {
+  return (
+    <Suspense fallback={<div className="p-4 md:p-6 text-sm text-muted-foreground">Loading marketplace...</div>}>
+      <BuyerMarketplacePageContent />
+    </Suspense>
   );
 }

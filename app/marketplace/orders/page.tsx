@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -43,11 +44,11 @@ export default function BuyerOrdersPage() {
     return <DashboardSkeleton />;
   }
 
-  const handleDelete = async (e: React.MouseEvent, orderId: any) => {
+  const handleDelete = async (e: React.MouseEvent, orderId: string) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      await deleteOrder({ orderId });
+      await deleteOrder({ orderId: orderId as Id<"orders"> });
       toast.success("Record removed from history");
     } catch (error) {
       toast.error("Failed to remove record");
@@ -110,7 +111,7 @@ export default function BuyerOrdersPage() {
 
       <ClientAnimationWrapper>
         <div className="space-y-10">
-          {orders.map((order: any, index: number) => (
+          {orders.map((order, index: number) => (
             <Link href={`/marketplace/orders?orderId=${order._id}`} key={order._id}>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -122,9 +123,9 @@ export default function BuyerOrdersPage() {
                   <div className="flex flex-col md:flex-row w-full relative">
                     <div className="md:w-80 h-56 md:h-64 relative overflow-hidden shrink-0 border-r border-zinc-100 dark:border-zinc-800/50">
                        <img 
-                          src={getCropImage(order.cropName)} 
+                          src={getCropImage(order.assetCategory)} 
                           className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-700 opacity-95 group-hover/card:opacity-100" 
-                          alt={order.cropName} 
+                          alt={order.assetCategory} 
                        />
                        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
                     </div>
@@ -138,16 +139,16 @@ export default function BuyerOrdersPage() {
                             {order.orderStatus}
                           </Badge>
                         </div>
-                        <h3 className="text-2xl font-black text-zinc-900">{order.cropName}</h3>
+                        <h3 className="text-2xl font-black text-zinc-900">{order.assetCategory}</h3>
                         
-                        {/* Farmer Contact Exchange */}
+                        {/* Owner Contact Exchange */}
                         <div className="flex flex-wrap gap-4 pt-2 border-t border-zinc-100 mt-4">
                            <div className="flex items-center gap-2 group/contact">
                               <div className="size-8 rounded-lg bg-zinc-50 flex items-center justify-center border border-zinc-100 group-hover/contact:bg-emerald-50 transition-colors">
                                  <User className="size-4 text-emerald-600" />
                               </div>
                               <div className="flex flex-col">
-                                 <p className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Verified Farmer</p>
+                                 <p className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Verified Owner</p>
                                  <p className="text-xs font-bold text-zinc-700">{order.farmerName}</p>
                               </div>
                            </div>

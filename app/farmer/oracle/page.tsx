@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 
 export default function FarmerOraclePage() {
   const { user } = useUser();
-  const [crop, setCrop] = useState("Wheat");
+  const [equipment, setCrop] = useState("Wheat");
   const [quantity, setQuantity] = useState(100);
   const [unit, setUnit] = useState("quintal");
   const [district, setDistrict] = useState("Jaipur");
@@ -27,7 +27,7 @@ export default function FarmerOraclePage() {
       .filter((item) => typeof item.oraclePrice === "number")
       .map((item) => ({
         id: item._id,
-        cropName: item.cropName,
+        assetCategory: item.assetCategory,
         fairPrice: item.oraclePrice || 0,
         confidence: item.oracleConfidence || 0,
         recommendation: item.oracleRecommendation || "-",
@@ -38,7 +38,7 @@ export default function FarmerOraclePage() {
   const runOracle = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/dashboard/command-center?" + new URLSearchParams({ commodity: crop, state, city: district, quantity: String(quantity), unit }));
+      const response = await fetch("/api/dashboard/command-center?" + new URLSearchParams({ commodity: equipment, state, city: district, quantity: String(quantity), unit }));
       const json = (await response.json()) as {
         oracle?: { fairPrice: number; confidence: number; recommendation: string; reasoning: string };
       };
@@ -52,7 +52,7 @@ export default function FarmerOraclePage() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <h1 className="text-2xl font-black">Farmer Oracle</h1>
+      <h1 className="text-2xl font-black">Owner Oracle</h1>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -62,8 +62,8 @@ export default function FarmerOraclePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
-              <Label>Crop</Label>
-              <Input value={crop} onChange={(e) => setCrop(e.target.value)} />
+              <Label>Equipment</Label>
+              <Input value={equipment} onChange={(e) => setCrop(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label>Quantity</Label>
@@ -115,7 +115,7 @@ export default function FarmerOraclePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left">
-                  <th className="py-2">Crop</th>
+                  <th className="py-2">Equipment</th>
                   <th className="py-2">Fair Price</th>
                   <th className="py-2">Confidence</th>
                   <th className="py-2">Recommendation</th>
@@ -125,7 +125,7 @@ export default function FarmerOraclePage() {
               <tbody>
                 {history.map((row) => (
                   <tr key={String(row.id)} className="border-b">
-                    <td className="py-2">{row.cropName}</td>
+                    <td className="py-2">{row.assetCategory}</td>
                     <td className="py-2">₹{row.fairPrice.toFixed(0)}</td>
                     <td className="py-2">{row.confidence.toFixed(0)}%</td>
                     <td className="py-2">{row.recommendation}</td>

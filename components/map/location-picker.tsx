@@ -10,6 +10,24 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+const MapContainer = RLMapContainer as unknown as React.ComponentType<{
+  center: [number, number];
+  zoom: number;
+  scrollWheelZoom?: boolean;
+  className?: string;
+  children?: React.ReactNode;
+}>;
+
+const TileLayer = RLTileLayer as unknown as React.ComponentType<{
+  url: string;
+  attribution?: string;
+}>;
+
+const Marker = RLMarker as unknown as React.ComponentType<{
+  position: [number, number];
+  icon?: unknown;
+}>;
+
 // Fix Leaflet marker icon issue in Next.js
 const markerIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -18,10 +36,6 @@ const markerIcon = L.icon({
   iconAnchor: [12, 41],
 });
 
-const MapContainer = RLMapContainer as any;
-const TileLayer = RLTileLayer as any;
-const Marker = RLMarker as any;
-
 interface LocationPickerProps {
   onLocationSelect: (lat: number, lng: number) => void;
   initialPos?: { lat: number; lng: number };
@@ -29,7 +43,7 @@ interface LocationPickerProps {
 
 function MapEvents({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
   useMapEvents({
-    click(e: any) {
+    click(e: { latlng: { lat: number; lng: number } }) {
       onLocationSelect(e.latlng.lat, e.latlng.lng);
     },
   });
@@ -48,19 +62,16 @@ export default function LocationPicker({ onLocationSelect, initialPos }: Locatio
 
   return (
     <div className="size-full rounded-[2rem] overflow-hidden border-2 border-emerald-50/50 shadow-inner group relative">
-      {/* @ts-ignore */}
       <MapContainer
         center={position}
         zoom={13}
         scrollWheelZoom={false}
         className="size-full z-0 h-48 md:h-64"
       >
-        {/* @ts-ignore */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {/* @ts-ignore */}
         <Marker position={position} icon={markerIcon} />
         <MapEvents onLocationSelect={handleSelect} />
       </MapContainer>

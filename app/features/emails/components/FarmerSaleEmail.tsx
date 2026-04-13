@@ -12,10 +12,10 @@ import {
 } from "@react-email/components";
 
 type FarmerSaleEmailProps = {
-  farmerName: string;
-  crop: string;
+  ownerName: string;
+  equipment: string;
   amount: number;
-  buyerName: string;
+  renterName: string;
   orderId: string;
   sourceLocation: string;
 };
@@ -28,24 +28,24 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export function FarmerSaleEmail({
-  farmerName,
-  crop,
+  ownerName,
+  equipment,
   amount,
-  buyerName,
+  renterName,
   orderId,
   sourceLocation,
 }: FarmerSaleEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>{`New order #${orderId.slice(-8)} for your ${crop}`}</Preview>
+      <Preview>{`New order #${orderId.slice(-8)} for your ${equipment}`}</Preview>
       <Body style={{ backgroundColor: "#f3f4f6", margin: 0, padding: "24px 0" }}>
         <Container style={{ backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "24px" }}>
           <Section>
             <Heading style={{ margin: "0 0 10px", color: "#14532d" }}>New Order Received</Heading>
-            <Text style={{ margin: 0, color: "#111827" }}>Hello {farmerName},</Text>
+            <Text style={{ margin: 0, color: "#111827" }}>Hello {ownerName},</Text>
             <Text style={{ margin: "10px 0 0", color: "#374151", lineHeight: "22px" }}>
-              <strong>{buyerName}</strong> has placed a confirmed order for <strong>{crop}</strong>.
+              <strong>{renterName}</strong> has placed a confirmed order for <strong>{equipment}</strong>.
             </Text>
           </Section>
 

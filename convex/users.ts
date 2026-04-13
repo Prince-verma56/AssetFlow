@@ -39,6 +39,8 @@ export const storeUser = mutation({
       roles: ["farmer", "buyer"],
       hasOnboarded: false,
       imageUrl: identity.pictureUrl,
+      avatarUrl: identity.pictureUrl,
+      trustScore: 72,
     });
   },
 });
@@ -70,6 +72,7 @@ export const upsertRoleByClerkId = mutation({
     name: v.string(),
     email: v.string(),
     imageUrl: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -85,6 +88,7 @@ export const upsertRoleByClerkId = mutation({
         name: args.name,
         email: args.email,
         imageUrl: args.imageUrl,
+        avatarUrl: args.avatarUrl ?? args.imageUrl,
       });
       return existing._id;
     }
@@ -96,7 +100,9 @@ export const upsertRoleByClerkId = mutation({
       name: args.name,
       email: args.email,
       imageUrl: args.imageUrl,
+      avatarUrl: args.avatarUrl ?? args.imageUrl,
       hasOnboarded: true,
+      trustScore: 72,
     });
   },
 });
@@ -141,8 +147,12 @@ export const getUserByClerkId = query({
             ),
             name: user.name,
             email: user.email,
+            avatarUrl: user.avatarUrl ?? user.imageUrl ?? null,
+            bio: user.bio ?? null,
+            trustScore: user.trustScore ?? 72,
             lat: user.lat ?? null,
             lng: user.lng ?? null,
+            location: user.location ?? null,
             locationUpdatedAt: user.locationUpdatedAt ?? null,
           }
         : null,
@@ -157,6 +167,7 @@ export const setUserRole = mutation({
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -164,6 +175,7 @@ export const setUserRole = mutation({
     const resolvedName = identity?.name ?? args.name ?? "Anonymous";
     const resolvedEmail = identity?.email ?? args.email ?? "unknown@example.com";
     const resolvedImage = identity?.pictureUrl ?? args.imageUrl;
+    const resolvedAvatar = identity?.pictureUrl ?? args.avatarUrl ?? args.imageUrl;
 
     if (!resolvedClerkId) {
       return { success: false, error: "Unauthenticated" } as const;
@@ -180,6 +192,8 @@ export const setUserRole = mutation({
         role: args.role,
         roles,
         hasOnboarded: true,
+        avatarUrl: existing.avatarUrl ?? resolvedAvatar,
+        trustScore: existing.trustScore ?? 72,
       });
       return { success: true, data: { id: existing._id, role: args.role } } as const;
     }
@@ -192,6 +206,8 @@ export const setUserRole = mutation({
       roles: ["farmer", "buyer"],
       hasOnboarded: true,
       imageUrl: resolvedImage,
+      avatarUrl: resolvedAvatar,
+      trustScore: 72,
     });
 
     return { success: true, data: { id, role: args.role } } as const;
@@ -224,6 +240,10 @@ export const updateUserLocation = mutation({
     await ctx.db.patch(user._id, {
       lat: roundedLat,
       lng: roundedLng,
+      location: {
+        lat: roundedLat,
+        lng: roundedLng,
+      },
       locationUpdatedAt: Date.now(),
     });
 

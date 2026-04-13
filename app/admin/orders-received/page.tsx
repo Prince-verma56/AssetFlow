@@ -43,9 +43,32 @@ import { DashboardSkeleton } from "@/components/sidebar/dashboard-skeleton";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 
-const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false }) as any;
-const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false }) as any;
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false }) as any;
+type MapContainerProps = {
+  center: [number, number];
+  zoom: number;
+  className?: string;
+  style?: React.CSSProperties;
+  children?: React.ReactNode;
+};
+
+type TileLayerProps = {
+  url: string;
+};
+
+type MarkerProps = {
+  position: [number, number];
+  icon?: unknown;
+};
+
+const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), {
+  ssr: false,
+}) as unknown as React.ComponentType<MapContainerProps>;
+const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), {
+  ssr: false,
+}) as unknown as React.ComponentType<TileLayerProps>;
+const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), {
+  ssr: false,
+}) as unknown as React.ComponentType<MarkerProps>;
 
 import "leaflet/dist/leaflet.css";
 
@@ -92,18 +115,18 @@ export default function OrdersReceivedPage() {
             <TableHeader className="bg-zinc-50/50">
               <TableRow className="hover:bg-transparent border-zinc-100">
                 <TableHead className="font-black uppercase tracking-widest text-[10px] py-6 px-8">Acquisition / Date</TableHead>
-                <TableHead className="font-black uppercase tracking-widest text-[10px]">Acquirer (Buyer)</TableHead>
+                <TableHead className="font-black uppercase tracking-widest text-[10px]">Acquirer (Renter)</TableHead>
                 <TableHead className="font-black uppercase tracking-widest text-[10px]">Impact Value</TableHead>
                 <TableHead className="font-black uppercase tracking-widest text-[10px]">Logistics Status</TableHead>
                 <TableHead className="text-right font-black uppercase tracking-widest text-[10px] py-6 px-8">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orders.map((order: any) => (
+              {orders.map((order) => (
                 <TableRow key={order._id} className="hover:bg-zinc-50/30 transition-colors border-zinc-100">
                   <TableCell className="py-6 px-8">
                     <div className="flex flex-col gap-1">
-                      <span className="font-bold text-zinc-900">{order.cropName}</span>
+                      <span className="font-bold text-zinc-900">{order.assetCategory}</span>
                       <span className="text-xs text-zinc-400 flex items-center gap-1.5 font-medium">
                         <Calendar className="size-3" />
                         {new Date(order._creationTime).toLocaleDateString()}
@@ -190,8 +213,17 @@ export default function OrdersReceivedPage() {
                                     <div className="p-5 rounded-[2rem] bg-white border border-zinc-100 shadow-sm flex items-start gap-3">
                                        <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" />
                                        <p className="text-sm font-bold text-zinc-700 leading-relaxed">
-                                          {order.deliveryAddress?.street},<br/>
-                                          {order.deliveryAddress?.city}, {order.deliveryAddress?.state} - <span className="font-app-mono">{order.deliveryAddress?.pincode}</span>
+                                          {typeof order.deliveryAddress === "string" ? (
+                                            order.deliveryAddress
+                                          ) : order.deliveryAddress ? (
+                                            <>
+                                              {order.deliveryAddress.street},<br />
+                                              {order.deliveryAddress.city}, {order.deliveryAddress.state} -{" "}
+                                              <span className="font-app-mono">{order.deliveryAddress.pincode}</span>
+                                            </>
+                                          ) : (
+                                            "—"
+                                          )}
                                        </p>
                                     </div>
                                  </div>
@@ -200,7 +232,7 @@ export default function OrdersReceivedPage() {
                                     <div className="p-5 rounded-[2rem] bg-zinc-950 text-white shadow-xl flex items-center justify-between overflow-hidden relative">
                                        <div className="absolute bottom-0 right-0 opacity-10 blur-xl size-20 bg-emerald-400 rounded-full" />
                                        <div className="space-y-0.5 relative z-10">
-                                          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-500">{order.cropName}</p>
+                                          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-500">{order.assetCategory}</p>
                                           <p className="text-2xl font-black tracking-tight">₹{(order.totalAmount / 100).toLocaleString()}</p>
                                        </div>
                                        <Badge className="bg-emerald-500 text-white border-none font-black text-[10px] uppercase tracking-widest px-3 py-1 relative z-10">
@@ -213,7 +245,6 @@ export default function OrdersReceivedPage() {
                            
                            <div className="p-8 space-y-6">
                               <div className="relative h-[300px] w-full rounded-[2.5rem] overflow-hidden border-2 border-zinc-50 shadow-2xl z-0">
-                                 {/* @ts-ignore */}
                                  <MapContainer 
                                     center={[order.latitude || 26.9124, order.longitude || 75.7873]} 
                                     zoom={15} 
@@ -222,8 +253,7 @@ export default function OrdersReceivedPage() {
                                  >
                                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                                     {order.latitude && order.longitude && (
-                                       /* @ts-ignore */
-                                       <Marker position={[order.latitude, order.longitude] as any} icon={markerIcon} />
+                                       <Marker position={[order.latitude, order.longitude]} icon={markerIcon} />
                                     )}
                                  </MapContainer>
                               </div>

@@ -2,14 +2,12 @@
 
 import * as React from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
-import { getCropImage } from "@/lib/asset-mapping";
 import type { StatCard } from "@/config/stats.config";
 import type { TableConfig } from "@/config/table.config";
 import { cn } from "@/lib/utils";
 import { MANDI_MARKET_OPTIONS, MANDI_STATE_OPTIONS } from "@/lib/agmarknet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -19,18 +17,19 @@ import { DashboardSkeleton } from "@/components/sidebar/dashboard-skeleton";
 import { DataTable, renderStatusBadge } from "@/components/sidebar/data-table";
 import { SectionCards } from "@/components/sidebar/section-cards";
 import { ANCHOR_DATE_ISO } from "@/lib/time-anchor";
+import { IdleAssetCalculator } from "@/components/admin/idle-asset-calculator";
 
 type DashboardListingRow = {
   listingId: string;
   id: string; // The actual Convex ID
-  crop: string;
+  equipment: string;
   location: string;
   quantity: string;
   mandiPrice: string;
   fairPrice: string;
   buyerPrice: string;
-  harvestDate: string;
-  daysToHarvest: number;
+  availableFrom: string;
+  daysToAvailable: number;
   oracleAdvice: string;
   rawMandiPrice: number;
   rawFairPrice: number;
@@ -38,17 +37,15 @@ type DashboardListingRow = {
 };
 
 type DashboardContext = {
-  commodity: string;
+  categoryId: string;
   state: string;
   city: string;
-  quantity: number;
-  unit: string;
 };
 
 type DashboardPayload = {
   stats: StatCard[];
   chartData: OracleChartPoint[];
-  tableRows: Array<Omit<DashboardListingRow, "daysToHarvest">>;
+  tableRows: Array<Omit<DashboardListingRow, "daysToAvailable">>;
   processingLabel: string;
   error?: string;
   context?: DashboardContext;
@@ -62,19 +59,25 @@ const initialState: DashboardPayload = {
 };
 
 const defaultFilters: DashboardContext = {
-  commodity: "Wheat",
+  categoryId: "farming",
   state: "Rajasthan",
   city: "Jaipur",
-  quantity: 100,
-  unit: "quintal",
 };
 
-const COMMODITIES = [
-  "Wheat", "Mustard", "Rice", "Paddy", "Cotton", "Soybean", "Onion", 
-  "Tomato", "Potato", "Maize", "Bajra", "Jowar", "Sugarcane", 
-  "Groundnut", "Gram", "Tur", "Moong", "Urad", "Sunflower", 
-  "Sesame", "Copra", "Jute", "Apple", "Banana"
+const RENTAL_CATEGORIES = [
+  { id: "farming", label: "Farming Machinery" },
+  { id: "construction", label: "Construction & Tools" },
+  { id: "electronics", label: "Electronics" },
+  { id: "home_outdoor", label: "Home Appliances" },
 ];
+
+function getRentalCategoryLabel(categoryId: string) {
+  return RENTAL_CATEGORIES.find((c) => c.id === categoryId)?.label ?? RENTAL_CATEGORIES[0]?.label ?? "Farming Machinery";
+}
+
+function getRentalCategoryIdFromLabel(label: string) {
+  return RENTAL_CATEGORIES.find((c) => c.label === label)?.id ?? "farming";
+}
 
 function daysFromAnchor(isoDate: string) {
   const target = new Date(`${isoDate}T00:00:00.000Z`);
@@ -147,11 +150,9 @@ export default function AdminPage() {
 
     const startedAt = performance.now();
     const query = new URLSearchParams({
-      commodity: context.commodity,
+      categoryId: context.categoryId,
       state: context.state,
       city: context.city,
-      quantity: String(context.quantity),
-      unit: context.unit,
     });
 
     const response = await fetch(`/api/dashboard/command-center?${query.toString()}`, { cache: "no-store" });
@@ -184,7 +185,7 @@ export default function AdminPage() {
     () =>
       dashboard.tableRows.map((row) => ({
         ...row,
-        daysToHarvest: daysFromAnchor(row.harvestDate),
+        daysToAvailable: daysFromAnchor(row.availableFrom),
       })),
     [dashboard.tableRows]
   );
@@ -193,24 +194,17 @@ export default function AdminPage() {
     () => ({
       title: "Equipment Overview",
       description: "Live rental intelligence for your listed equipment.",
-      searchKey: "crop",
+      searchKey: "equipment",
       searchPlaceholder: "Filter by equipment...",
       statusKey: "oracleAdvice",
       pageSize: 5,
-      initialSort: { id: "daysToHarvest", desc: false },
+      initialSort: { id: "daysToAvailable", desc: false },
       columns: [
         { 
-          key: "crop", 
+          key: "equipment", 
           header: "Equipment", 
           sortable: true,
-          cell: (row) => (
-            <div className="flex items-center gap-3">
-              <div className="size-8 rounded-lg overflow-hidden border border-zinc-100 shadow-sm shrink-0">
-                <img src={getCropImage(row.crop)} alt={row.crop} className="w-full h-full object-cover" />
-              </div>
-              <span className="font-bold">{row.crop}</span>
-            </div>
-          )
+          cell: (row) => <span className="font-bold">{row.equipment}</span>
         },
         { key: "location", header: "Location", sortable: true },
         { key: "quantity", header: "Qty", sortable: true },
@@ -235,34 +229,20 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
+      <IdleAssetCalculator />
+
       <Card className="border-border bg-card">
         <CardHeader>
           <CardTitle>Live Rental Filters</CardTitle>
           <CardDescription>Run the market sync and pricing advisor with typo-safe region selectors.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" onSubmit={onSubmit}>
+          <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={onSubmit}>
             <ComboboxField
-              label="Commodity"
-              value={filters.commodity}
-              options={COMMODITIES}
-              onSelect={(commodity) => setFilters((prev) => ({ ...prev, commodity }))}
-              renderOption={(opt) => (
-                <div className="flex items-center gap-2 w-full">
-                  <div className="size-6 shrink-0 rounded overflow-hidden">
-                    <img src={getCropImage(opt)} className="w-full h-full object-cover" alt={opt} />
-                  </div>
-                  <span>{opt}</span>
-                </div>
-              )}
-              renderValue={(val) => (
-                <div className="flex items-center gap-2">
-                  <div className="size-5 shrink-0 rounded overflow-hidden">
-                    <img src={getCropImage(val)} className="w-full h-full object-cover" alt={val} />
-                  </div>
-                  <span className="truncate">{val}</span>
-                </div>
-              )}
+              label="Asset Category"
+              value={getRentalCategoryLabel(filters.categoryId)}
+              options={RENTAL_CATEGORIES.map((c) => c.label)}
+              onSelect={(label) => setFilters((prev) => ({ ...prev, categoryId: getRentalCategoryIdFromLabel(label) }))}
             />
 
             <ComboboxField
@@ -276,22 +256,11 @@ export default function AdminPage() {
             />
 
             <ComboboxField
-              label="Mandi City"
+              label="City/Region"
               value={filters.city}
               options={cityOptions}
               onSelect={(city) => setFilters((prev) => ({ ...prev, city }))}
             />
-
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity (quintal)</Label>
-              <Input
-                id="quantity"
-                type="number"
-                min={1}
-                value={filters.quantity}
-                onChange={(e) => setFilters((prev) => ({ ...prev, quantity: Number(e.target.value || 0) }))}
-              />
-            </div>
 
             <div className="flex items-end">
               <Button type="submit" className="w-full" disabled={isLoading}>

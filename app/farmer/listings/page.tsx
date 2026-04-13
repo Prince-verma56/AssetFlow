@@ -13,16 +13,16 @@ export default function FarmerListingsPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <h1 className="text-2xl font-black">Farmer Listings</h1>
+      <h1 className="text-2xl font-black">Owner Listings</h1>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {data.map((listing) => (
           <Card key={listing._id}>
             <CardHeader>
-              <CardTitle>{listing.cropName}</CardTitle>
+              <CardTitle>{listing.assetCategory}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm text-muted-foreground">
               <p>{listing.location}</p>
-              <p>₹{listing.pricePerKg.toFixed(2)}/kg</p>
+              <p>₹{Number(listing.pricePerDay ?? 0).toFixed(2)}/day</p>
               <p>{listing.quantity}</p>
             </CardContent>
           </Card>

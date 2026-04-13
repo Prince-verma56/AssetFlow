@@ -19,15 +19,15 @@ export const FARMER_ITEMS: NavItemConfig[] = [
   { title: "Dashboard", href: "/admin", icon: "LayoutDashboard" },
   { title: "My Equipment", href: "/admin/listings", icon: "Wrench" },
   { title: "Rentals", href: "/admin/orders", icon: "ClipboardList" },
-  { title: "Price Advisor", href: "/admin/ai-oracle", icon: "Sparkles" },
+  { title: "Price Advisor", href: "/admin/price-advisor", icon: "Sparkles" },
   { title: "Analytics", href: "/admin/analytics", icon: "BarChart2" },
 ];
 
 export const BUYER_ITEMS: NavItemConfig[] = [
   { title: "Marketplace", href: "/marketplace", icon: "LayoutDashboard" },
-  { title: "My Rentals", href: "/marketplace/orders", icon: "ClipboardList" },
-  { title: "Saved Owners", href: "/marketplace/saved-farmers", icon: "Bookmark" },
-  { title: "Tracking", href: "/marketplace/track", icon: "Truck" },
+  { title: "My Rentals", href: "/renter/rentals", icon: "ClipboardList" },
+  { title: "Saved Owners", href: "/renter/saved-owners", icon: "Bookmark" },
+  { title: "Tracking", href: "/renter/tracking", icon: "Truck" },
 ];
 
 export const navConfig: NavConfig = {
@@ -37,11 +37,13 @@ export const navConfig: NavConfig = {
   farmerNav: FARMER_ITEMS,
   buyerNav: BUYER_ITEMS,
   farmerSecondaryNav: [
+    { title: "Map Hub", href: "/map", icon: "MapPin" },
     { title: "Billing", href: "/admin/billing", icon: "CreditCard" },
     { title: "Settings", href: "/admin/settings", icon: "Settings" },
     { title: "Help", href: "/admin/help", icon: "CircleHelp" },
   ],
   buyerSecondaryNav: [
+    { title: "Map Hub", href: "/map", icon: "MapPin" },
     { title: "Billing", href: "/marketplace/billing", icon: "CreditCard" },
     { title: "Settings", href: "/marketplace/settings", icon: "Settings" },
     { title: "Help", href: "/marketplace/help", icon: "CircleHelp" },

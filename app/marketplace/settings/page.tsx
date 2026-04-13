@@ -6,11 +6,11 @@ export default function SettingsPage() {
       <CardHeader>
         <CardTitle>Settings</CardTitle>
         <CardDescription>
-          Settings route is active for buyer workflows.
+          Settings route is active for renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-emerald-900/80">Wire this page to Convex reads/writes for purchasing lifecycle next.</p>
+        <p className="text-sm text-emerald-900/80">Wire this page to Convex reads/writes for renting lifecycle next.</p>
       </CardContent>
     </Card>
   );

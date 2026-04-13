@@ -6,11 +6,11 @@ export default function BillingPage() {
       <CardHeader>
         <CardTitle>Billing</CardTitle>
         <CardDescription>
-          Billing route is active for buyer workflows.
+          Billing route is active for renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-emerald-900/80">Wire this page to Convex reads/writes for purchasing lifecycle next.</p>
+        <p className="text-sm text-emerald-900/80">Wire this page to Convex reads/writes for renting lifecycle next.</p>
       </CardContent>
     </Card>
   );

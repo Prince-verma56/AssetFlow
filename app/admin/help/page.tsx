@@ -6,7 +6,7 @@ export default function HelpPage() {
       <CardHeader>
         <CardTitle>Help</CardTitle>
         <CardDescription>
-          Help workspace is active. Connect this page to Convex data next for full farmer and buyer workflows.
+          Help workspace is active. Connect this page to Convex data next for full owner and renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>

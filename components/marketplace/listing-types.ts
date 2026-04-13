@@ -1,0 +1,20 @@
+export type MarketplaceListing = {
+  _id: string;
+  farmerId?: string;
+  title?: string;
+  assetCategory: string;
+  categoryId?: string;
+  subCategoryId?: string;
+  description: string;
+  pricePerDay: number;
+  quantity: string;
+  minimumRentalDays?: number;
+  condition?: "Like New" | "Excellent" | "Good" | "Fair";
+  location: string;
+  imageUrl?: string;
+  farmerName?: string;
+  farmerImage?: string;
+  oraclePrice?: number;
+  oracleConfidence?: number;
+  qualityScore?: string;
+};

@@ -1,12 +1,13 @@
 export type MarketplaceProduct = {
   id: string;
-  crop: string;
+  equipment: string;
   location: string;
-  farmerName?: string;
-  farmerImage?: string;
+  ownerName?: string;
+  ownerImage?: string;
   quantity: string;
+  pricePerDay: number;
   buyerPricePerKg: number;
-  localMandiPricePerKg: number;
+  localMandiPricePerDay: number;
   trustGaugeText: string;
   insight: string;
   mandiModalPrice: string;

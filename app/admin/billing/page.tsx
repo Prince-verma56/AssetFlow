@@ -6,7 +6,7 @@ export default function BillingPage() {
       <CardHeader>
         <CardTitle>Billing</CardTitle>
         <CardDescription>
-          Billing workspace is active. Connect this page to Convex data next for full farmer and buyer workflows.
+          Billing workspace is active. Connect this page to Convex data next for full owner and renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>

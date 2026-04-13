@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +37,11 @@ type SalesOrder = {
   totalAmount: number;
   orderStatus: string;
   paymentStatus: string;
-  cropName?: string;
-  buyerName?: string;
-  buyerEmail?: string;
-  buyerPhone?: string;
-  buyerImage?: string;
+  assetCategory?: string;
+  renterName?: string;
+  renterEmail?: string;
+  renterPhone?: string;
+  renterImage?: string;
   deliveryAddress?:
     | string
     | {
@@ -50,6 +51,16 @@ type SalesOrder = {
         pincode: string;
       };
 };
+
+type OrderStatus =
+  | "pending"
+  | "escrow"
+  | "placed"
+  | "shipped"
+  | "delivered"
+  | "disputed"
+  | "completed"
+  | "cancelled";
 
 function getStatusTone(status: string) {
   if (status === "delivered" || status === "completed") return "emerald";
@@ -89,7 +100,7 @@ export default function SalesTrackingPage() {
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
-      await updateStatus({ orderId: orderId as any, orderStatus: newStatus as any });
+      await updateStatus({ orderId: orderId as Id<"orders">, orderStatus: newStatus as OrderStatus });
       toast.success(`Order updated: ${prettyStatus(newStatus)}`);
     } catch {
       toast.error("Failed to update status");
@@ -174,17 +185,17 @@ export default function SalesTrackingPage() {
 
                         <div className="flex items-center gap-3">
                           <Image
-                            src={getCropImage(order.cropName || "Crop")}
-                            alt={order.cropName || "Crop"}
+                            src={getCropImage(order.assetCategory || "Equipment")}
+                            alt={order.assetCategory || "Equipment"}
                             width={46}
                             height={46}
                             className="size-11 rounded-xl object-cover"
                           />
-                          <h3 className="text-xl font-black text-zinc-900">{order.cropName || "Direct Farm Sale"}</h3>
+                          <h3 className="text-xl font-black text-zinc-900">{order.assetCategory || "Direct Farm Sale"}</h3>
                         </div>
 
                         <div className="grid grid-cols-1 gap-2 text-xs text-zinc-600 md:grid-cols-2">
-                          <p className="flex items-center gap-1.5"><User className="size-3" />{order.buyerName || "Verified Buyer"}</p>
+                          <p className="flex items-center gap-1.5"><User className="size-3" />{order.renterName || "Verified Renter"}</p>
                           <p className="flex items-center gap-1.5"><Calendar className="size-3" />{new Date(order._creationTime).toLocaleString()}</p>
                           <p className="flex items-center gap-1.5 md:col-span-2"><MapPin className="size-3" />{getAddressLabel(order)}</p>
                         </div>
@@ -263,14 +274,14 @@ export default function SalesTrackingPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-3 rounded-xl border p-3">
                 <Image
-                  src={getCropImage(selectedOrder.cropName || "Crop")}
-                  alt={selectedOrder.cropName || "Crop"}
+                  src={getCropImage(selectedOrder.assetCategory || "Equipment")}
+                  alt={selectedOrder.assetCategory || "Equipment"}
                   width={64}
                   height={64}
                   className="size-14 rounded-xl object-cover"
                 />
                 <div>
-                  <p className="text-sm font-semibold">{selectedOrder.cropName || "Crop"}</p>
+                  <p className="text-sm font-semibold">{selectedOrder.assetCategory || "Equipment"}</p>
                   <p className="text-xs text-muted-foreground">Invoice #{selectedOrder._id.slice(-8)}</p>
                 </div>
                 <Badge className="ml-auto">{prettyStatus(selectedOrder.orderStatus || "pending")}</Badge>
@@ -278,10 +289,10 @@ export default function SalesTrackingPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">Buyer</p>
-                  <p className="font-medium">{selectedOrder.buyerName || "Anonymous Buyer"}</p>
-                  <p className="text-sm text-muted-foreground">{selectedOrder.buyerEmail || "-"}</p>
-                  <p className="text-sm text-muted-foreground">{selectedOrder.buyerPhone || "-"}</p>
+                  <p className="text-xs text-muted-foreground">Renter</p>
+                  <p className="font-medium">{selectedOrder.renterName || "Anonymous Renter"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOrder.renterEmail || "-"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedOrder.renterPhone || "-"}</p>
                 </div>
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Delivery Address</p>

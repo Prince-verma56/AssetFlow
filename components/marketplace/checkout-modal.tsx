@@ -4,6 +4,7 @@ import * as React from "react";
 import { useUser } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   Dialog,
   DialogContent,
@@ -23,12 +24,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CalendarIcon } from "lucide-react";
+import { addDays, differenceInDays, format } from "date-fns";
+import { type DateRange } from "react-day-picker";
 import { type MarketplaceProduct } from "@/components/marketplace/types";
 import { RazorpayPayButton } from "@/components/modules/payments/razorpay-pay-button";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { processOrderCommunication } from "@/app/actions/order-communication";
 import { getCropImage } from "@/lib/asset-mapping";
+import { cn } from "@/lib/utils";
 
 const LocationPicker = dynamic(() => import("@/components/map/location-picker"), {
   ssr: false,
@@ -61,41 +69,56 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
     pincode: "",
   });
 
+  const [date, setDate] = React.useState<DateRange | undefined>({
+    from: new Date(),
+    to: addDays(new Date(), 3),
+  });
+  const [insurance, setInsurance] = React.useState(false);
+
+  const rentalDays = date?.from && date?.to ? Math.max(1, differenceInDays(date.to, date.from)) : 1;
+  const baseCost = product.pricePerDay * rentalDays;
+  const insuranceCost = insurance ? (50 * rentalDays) : 0;
+  const totalCost = baseCost + insuranceCost;
+
   const [coords, setCoords] = React.useState({ lat: 26.9124, lng: 75.7873 });
   
   const createOrder = useMutation(api.orders.createOrder);
 
-  const handleSuccess = async (payload: any) => {
+  const handleSuccess = async (payload: { paymentId?: string; gatewayOrderId?: string }) => {
     try {
       if (!user?.id) throw new Error("Unauthenticated check");
 
       const orderId = await createOrder({
         clerkId: user.id,
-        listingId: product.id as any,
-        totalAmount: product.buyerPricePerKg * 100,
+        listingId: product.id as Id<"listings">,
+        totalAmount: totalCost,
         paymentId: payload.paymentId || `pay_${Math.random().toString(36).substring(7)}`, 
         razorpayOrderId: payload.gatewayOrderId || `order_${Math.random().toString(36).substring(7)}`, 
-        quantity: "100 kg", 
+        quantity: rentalDays, 
+        unit: "days",
+        rentalStartDate: date?.from?.toISOString() || new Date().toISOString(),
+        rentalEndDate: date?.to?.toISOString() || addDays(new Date(), 3).toISOString(),
+        insuranceSelected: insurance,
         deliveryAddress: address,
         latitude: coords.lat,
         longitude: coords.lng,
       });
 
       await processOrderCommunication({
-        buyerEmail: user?.primaryEmailAddress?.emailAddress || "buyer@example.com",
-        buyerName: user?.fullName || "Buyer",
-        farmerEmail: "farmer@farmdirect.ai",
-        farmerName: product.location.split(',')[0], 
-        cropName: product.crop,
-        amount: product.buyerPricePerKg * 100,
+        renterEmail: user?.primaryEmailAddress?.emailAddress || "renter@example.com",
+        renterName: user?.fullName || "Renter",
+        ownerEmail: "owner@farmdirect.ai",
+        ownerName: product.location.split(',')[0], 
+        assetCategory: product.equipment,
+        amount: totalCost,
         orderId: String(orderId),
         paymentId: payload.paymentId || "-",
         gatewayOrderId: payload.gatewayOrderId || "-",
-        quantity: "100 kg",
-        unitPricePerKg: product.buyerPricePerKg,
+        quantity: `${rentalDays} days`,
+        unitPricePerKg: product.pricePerDay,
         sourceLocation: product.location,
         deliveryAddress: address,
-        productImageUrl: getCropImage(product.crop),
+        productImageUrl: getCropImage(product.equipment),
       });
 
       setSuccess(true);
@@ -121,7 +144,7 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
             <div className="space-y-2">
               <h2 className="text-3xl font-black text-zinc-900 tracking-tight">Payment Secured!</h2>
               <p className="text-zinc-500 font-medium leading-relaxed">
-                Your order for <span className="text-emerald-600 font-bold">{product.crop}</span> is confirmed. 
+                Your order for <span className="text-emerald-600 font-bold">{product.equipment}</span> is confirmed. 
                 Full logistics coordination is now active.
               </p>
             </div>
@@ -131,7 +154,7 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
           </div>
         ) : (
           <div className="flex flex-col">
-             <DialogTitle className="sr-only">Checkout Process - {product.crop}</DialogTitle>
+             <DialogTitle className="sr-only">Checkout Process - {product.equipment}</DialogTitle>
              {/* Progress Header */}
              <div className="bg-zinc-50/50 p-6 border-b border-zinc-100 relative">
                 <div className="flex justify-between items-center mb-6">
@@ -179,6 +202,46 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
                             </Select>
                          </div>
                       </div>
+
+                       <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Rental Period</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                id="date"
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full justify-start text-left font-normal bg-white h-11 rounded-xl border-zinc-100",
+                                  !date && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {date?.from ? (
+                                  date.to ? (
+                                    <>
+                                      {format(date.from, "LLL dd, y")} -{" "}
+                                      {format(date.to, "LLL dd, y")}
+                                    </>
+                                  ) : (
+                                    format(date.from, "LLL dd, y")
+                                  )
+                                ) : (
+                                  <span>Pick a date range</span>
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                initialFocus
+                                mode="range"
+                                defaultMonth={date?.from}
+                                selected={date}
+                                onSelect={setDate}
+                                numberOfMonths={2}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                       </div>
 
                       <div className="space-y-2">
                          <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Full Street Address</Label>
@@ -248,19 +311,30 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
                          <div className="flex justify-between items-center">
                             <div className="space-y-0.5">
                                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Grand Total</p>
-                               <p className="text-3xl font-black text-zinc-950 tracking-tighter">₹{(product.buyerPricePerKg * 100).toLocaleString()}</p>
+                               <p className="text-3xl font-black text-zinc-950 tracking-tighter">₹{totalCost.toLocaleString()}</p>
                             </div>
                             <div className="size-16 rounded-2xl bg-emerald-50 flex items-center justify-center p-0.5 border border-emerald-100 overflow-hidden">
-                               <img src={product.farmerImage || "/placeholder-farmer.png"} className="size-full object-cover rounded-xl" alt="Farmer" />
+                               <img src={product.ownerImage || "/placeholder-owner.png"} className="size-full object-cover rounded-xl" alt="Owner" />
                             </div>
                          </div>
+                         
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="insurance" checked={insurance} onCheckedChange={(c) => setInsurance(c as boolean)} />
+                            <label
+                              htmlFor="insurance"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Add Damage Insurance (+₹50/day)
+                            </label>
+                          </div>
+
                          <div className="h-px bg-zinc-50" />
                          <div className="flex items-center gap-4">
                             <div className="size-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0 border border-orange-100">
                                <ShoppingCart className="size-5" />
                             </div>
                             <div className="space-y-0.5 truncate">
-                               <p className="text-xs font-bold text-zinc-900">{product.crop} (100Kg)</p>
+                               <p className="text-xs font-bold text-zinc-900">{product.equipment} ({rentalDays} Days)</p>
                                <p className="text-[10px] font-medium text-zinc-500 truncate">{address.city}, {address.state}</p>
                             </div>
                          </div>
@@ -272,13 +346,13 @@ export function CheckoutModal({ product, children }: { product: MarketplaceProdu
                          </Button>
                          <div className="flex-1">
                            <RazorpayPayButton
-                             amountInRupees={product.buyerPricePerKg * 100}
-                             description={`Purchase of ${product.crop} from ${product.location}`}
-                             customer={{ name: user?.fullName || "Buyer", email: user?.primaryEmailAddress?.emailAddress || "buyer@example.com" }}
+                             amountInRupees={totalCost}
+                             description={`Rent of ${product.equipment} for ${rentalDays} days`}
+                             customer={{ name: user?.fullName || "Renter", email: user?.primaryEmailAddress?.emailAddress || "renter@example.com" }}
                              onSuccess={handleSuccess}
                              className="w-full h-14 bg-zinc-900 hover:bg-zinc-800 text-white font-black rounded-2xl shadow-2xl transition-all"
                            >
-                             Purchase & Finalize
+                             Rent & Finalize
                            </RazorpayPayButton>
                          </div>
                       </div>

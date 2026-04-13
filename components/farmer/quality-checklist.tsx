@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 
 export type QualityChecklistValue = {
-  harvestDate: string;
+  availableFrom: string;
   storageCondition: string;
   pesticideUsed: boolean;
   irrigationType: string;
@@ -28,7 +28,7 @@ export type QualityChecklistProps = {
 
 export function QualityChecklist({ onComputed }: QualityChecklistProps) {
   const [form, setForm] = useState<QualityChecklistValue>({
-    harvestDate: "",
+    availableFrom: "",
     storageCondition: "Open Air",
     pesticideUsed: false,
     irrigationType: "Rain-fed",
@@ -49,7 +49,7 @@ export function QualityChecklist({ onComputed }: QualityChecklistProps) {
             {
               role: "system",
               content:
-                "Given these farming conditions, rate crop quality as A, B, or C. Return only JSON: { score: 'A'|'B'|'C', reason: string }",
+                "Given these farming conditions, rate equipment quality as A, B, or C. Return only JSON: { score: 'A'|'B'|'C', reason: string }",
             },
             { role: "user", content: JSON.stringify(form) },
           ],
@@ -83,8 +83,8 @@ export function QualityChecklist({ onComputed }: QualityChecklistProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1">
-          <Label>Harvest Date</Label>
-          <Input type="date" value={form.harvestDate} onChange={(e) => setForm((p) => ({ ...p, harvestDate: e.target.value }))} />
+          <Label>Available From</Label>
+          <Input type="date" value={form.availableFrom} onChange={(e) => setForm((p) => ({ ...p, availableFrom: e.target.value }))} />
         </div>
 
         <div className="space-y-1">

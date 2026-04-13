@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { useTheme } from "next-themes";
+import { Flame } from "lucide-react";
 import Map, {
   FullscreenControl,
   GeolocateControl,
@@ -35,10 +36,10 @@ type ActiveOrderPoint = {
   listingId: string;
   lat: number;
   lng: number;
-  buyerName: string;
-  buyerId: string;
-  buyerImage?: string;
-  cropName: string;
+  renterName: string;
+  renterId: string;
+  renterImage?: string;
+  assetCategory: string;
   quantityLabel: string;
   status: string;
   imageUrl?: string;
@@ -70,6 +71,32 @@ const buildingsLayer: LayerProps = {
   },
 };
 
+const demandHeatmapLayer: LayerProps = {
+  id: "demand-heatmap",
+  type: "heatmap",
+  paint: {
+    "heatmap-weight": ["get", "weight"],
+    "heatmap-intensity": 1.2,
+    "heatmap-radius": 28,
+    "heatmap-opacity": 0.75,
+    "heatmap-color": [
+      "interpolate",
+      ["linear"],
+      ["heatmap-density"],
+      0,
+      "rgba(255,255,255,0)",
+      0.2,
+      "#fde68a",
+      0.4,
+      "#fb923c",
+      0.7,
+      "#ef4444",
+      1,
+      "#b91c1c",
+    ],
+  },
+};
+
 function normalizeStatus(status: string) {
   if (status === "placed" || status === "escrow") return "In Transit";
   if (status === "shipped") return "Out for Delivery";
@@ -89,13 +116,29 @@ function AdminLogisticsPageContent() {
   const [is3D, setIs3D] = useState(false);
 
   const logistics = useQuery(api.orders.getActiveFarmerLogistics, user?.id ? { clerkId: user.id } : "skip");
+  const demandSignals = useQuery(api.wishlist.getDemandSignals, {});
 
   const mapToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
   const hasToken = mapToken.startsWith("pk.") && !mapToken.includes("your_token_here");
 
   const farmerLat = logistics?.success ? logistics.data.farmer.lat : null;
   const farmerLng = logistics?.success ? logistics.data.farmer.lng : null;
-  const activeOrders: ActiveOrderPoint[] = logistics?.success ? logistics.data.activeOrders : [];
+  const activeOrders: ActiveOrderPoint[] = logistics?.success
+    ? logistics.data.activeOrders.map((order) => ({
+        orderId: String(order.orderId),
+        listingId: String(order.listingId),
+        lat: order.lat,
+        lng: order.lng,
+        renterName: order.buyerName,
+        renterId: order.buyerId,
+        renterImage: order.buyerImage,
+        assetCategory: order.cropName,
+        quantityLabel: order.quantityLabel,
+        status: order.status,
+        imageUrl: order.imageUrl,
+        deliveryAddress: order.deliveryAddress,
+      }))
+    : [];
 
   const selectedOrderId = searchParams.get("orderId");
 
@@ -128,6 +171,28 @@ function AdminLogisticsPageContent() {
           : [],
     }),
     [routeCoords]
+  );
+
+  const demandGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: (demandSignals ?? []).map((point, index) => ({
+        type: "Feature",
+        id: `${point.source}-${index}`,
+        properties: {
+          weight: point.weight,
+          source: point.source,
+          label: point.label,
+          renterName: point.renterName,
+          assetCategory: point.assetCategory ?? "Equipment",
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [point.lng, point.lat],
+        },
+      })),
+    }),
+    [demandSignals]
   );
 
   const mapStyle = useMemo(() => {
@@ -172,14 +237,6 @@ function AdminLogisticsPageContent() {
   };
 
   useEffect(() => {
-    if (!selectedOrderId || activeOrders.length === 0) return;
-    const found = activeOrders.find((order) => order.orderId === selectedOrderId);
-    if (found) {
-      loadRoute(found).catch(() => null);
-    }
-  }, [selectedOrderId, activeOrders]);
-
-  useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
     if (is3D) {
@@ -217,7 +274,7 @@ function AdminLogisticsPageContent() {
         <CardHeader>
           <CardTitle>Professional Logistics Tracker</CardTitle>
           <CardDescription>
-            Hover or click delivery pins to inspect buyer details, then open live route guidance.
+            Hover or click delivery pins to inspect renter details, open live route guidance, and spot high-demand rental zones.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -273,19 +330,19 @@ function AdminLogisticsPageContent() {
                           "group relative rounded-full border-2 border-white bg-background p-0.5 shadow-lg transition-all",
                           selected?.orderId === order.orderId ? "scale-110 ring-2 ring-emerald-500" : "hover:scale-110"
                         )}
-                        title={`${order.cropName} -> ${order.buyerName}`}
+                        title={`${order.assetCategory} -> ${order.renterName}`}
                       >
                         <div className="relative size-7">
                           <Image
-                            src={order.buyerImage || "/placeholder-farmer.png"}
-                            alt={order.buyerName}
+                            src={order.renterImage || "/placeholder-owner.png"}
+                            alt={order.renterName}
                             width={30}
                             height={30}
                             className="size-7 rounded-full object-cover"
                           />
                           <Image
-                            src={order.imageUrl || getCropImage(order.cropName)}
-                            alt={order.cropName}
+                            src={order.imageUrl || getCropImage(order.assetCategory)}
+                            alt={order.assetCategory}
                             width={14}
                             height={14}
                             className="absolute -bottom-1 -right-1 size-3.5 rounded-full border border-white object-cover"
@@ -295,6 +352,12 @@ function AdminLogisticsPageContent() {
                       </button>
                     </Marker>
                   ))}
+
+                  {demandSignals && demandSignals.length > 0 ? (
+                    <Source id="demand-heatmap-source" type="geojson" data={demandGeoJson as GeoJSON.FeatureCollection}>
+                      <Layer {...demandHeatmapLayer} />
+                    </Source>
+                  ) : null}
 
                   {selected ? (
                     <Popup
@@ -307,14 +370,14 @@ function AdminLogisticsPageContent() {
                       <div className="min-w-[230px] space-y-3 p-1">
                         <div className="flex items-center gap-2">
                           <Image
-                            src={selected.buyerImage || "/placeholder-farmer.png"}
-                            alt={selected.buyerName}
+                            src={selected.renterImage || "/placeholder-owner.png"}
+                            alt={selected.renterName}
                             width={34}
                             height={34}
                             className="size-8 rounded-full object-cover"
                           />
                           <div>
-                            <p className="text-xs font-semibold">{selected.buyerName}</p>
+                            <p className="text-xs font-semibold">{selected.renterName}</p>
                             <p className="text-[11px] text-muted-foreground">Order #{selected.orderId.slice(-6)}</p>
                           </div>
                         </div>
@@ -324,13 +387,13 @@ function AdminLogisticsPageContent() {
                             <p className="text-muted-foreground">Commodity</p>
                             <div className="mt-0.5 flex items-center gap-1.5">
                               <Image
-                                src={selected.imageUrl || getCropImage(selected.cropName)}
-                                alt={selected.cropName}
+                                src={selected.imageUrl || getCropImage(selected.assetCategory)}
+                                alt={selected.assetCategory}
                                 width={14}
                                 height={14}
                                 className="size-3.5 rounded-full object-cover"
                               />
-                              <p className="font-medium">{selected.cropName}</p>
+                              <p className="font-medium">{selected.assetCategory}</p>
                             </div>
                           </div>
                           <div className="rounded-md bg-muted px-2 py-1">
@@ -384,6 +447,18 @@ function AdminLogisticsPageContent() {
                   <Button size="sm" variant={is3D ? "default" : "outline"} onClick={() => setIs3D((v) => !v)}>{is3D ? "2D" : "3D"}</Button>
                 </div>
               ) : null}
+
+              <div className="absolute left-3 top-3 z-10 rounded-2xl border border-red-200 bg-white/92 p-3 shadow-lg backdrop-blur dark:border-red-900/40 dark:bg-card/90">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Flame className="size-4 text-red-500" />
+                  <span>High Rental Demand Areas</span>
+                </div>
+                <div className="mt-3 h-2 w-40 rounded-full bg-[linear-gradient(90deg,#fde68a_0%,#fb923c_45%,#ef4444_75%,#b91c1c_100%)]" />
+                <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+                  <span>Warm</span>
+                  <span>Hot Zone</span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -395,7 +470,7 @@ function AdminLogisticsPageContent() {
           </CardHeader>
           <CardContent className="space-y-3">
             {activeOrders.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active deliveries with buyer map pins yet.</p>
+              <p className="text-sm text-muted-foreground">No active deliveries with renter map pins yet.</p>
             ) : (
               activeOrders.map((order) => (
                 <button
@@ -408,8 +483,8 @@ function AdminLogisticsPageContent() {
                   )}
                 >
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold">{order.cropName}</p>
-                    <p className="text-xs text-muted-foreground">Buyer: {order.buyerName}</p>
+                    <p className="text-sm font-semibold">{order.assetCategory}</p>
+                    <p className="text-xs text-muted-foreground">Renter: {order.renterName}</p>
                     <p className="text-xs text-muted-foreground">Qty: {order.quantityLabel}</p>
                   </div>
                   <Badge variant="outline" className="capitalize">

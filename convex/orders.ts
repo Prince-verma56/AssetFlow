@@ -1,7 +1,79 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
+
+type TrackingEvent = {
+  status: string;
+  timestamp: number;
+  description: string;
+};
+
+function createTrackingEvent(status: string, description: string, timestamp = Date.now()): TrackingEvent {
+  return {
+    status,
+    timestamp,
+    description,
+  };
+}
+
+function initialTrackingTimeline() {
+  return [
+    createTrackingEvent(
+      "Payment Secured",
+      "Razorpay payment was secured and the rental order is ready for owner confirmation."
+    ),
+  ];
+}
+
+function dedupeOrders<T extends { _id: Id<"orders"> }>(orders: T[]) {
+  return orders.filter((order, index, self) => self.findIndex((candidate) => candidate._id === order._id) === index);
+}
+
+async function resolveUser(
+  ctx: QueryCtx | MutationCtx,
+  identifier: Id<"users"> | string
+): Promise<Doc<"users"> | null> {
+  if (typeof identifier !== "string") {
+    return (await ctx.db.get(identifier)) as Doc<"users"> | null;
+  }
+
+  try {
+    const byId = await ctx.db.get(identifier as Id<"users">);
+    if (byId) return byId as Doc<"users">;
+  } catch {
+    // Fall back to Clerk id lookup below.
+  }
+
+  return (await ctx.db
+    .query("users")
+    .withIndex("by_clerkId", (q) => q.eq("clerkId", identifier))
+    .unique()) as Doc<"users"> | null;
+}
+
+function normalizeTrackingStatus(status: string) {
+  switch (status) {
+    case "placed":
+    case "escrow":
+      return "Payment Secured";
+    case "shipped":
+      return "Asset Handover";
+    case "delivered":
+      return "In Use";
+    case "completed":
+      return "Returned";
+    default:
+      return status;
+  }
+}
+
+function ensureTrackingTimeline(order: Doc<"orders">) {
+  if (order.trackingTimeline && order.trackingTimeline.length > 0) {
+    return order.trackingTimeline;
+  }
+
+  return initialTrackingTimeline();
+}
 
 export const createOrder = mutation({
   args: {
@@ -11,10 +83,14 @@ export const createOrder = mutation({
     listingId: v.id("listings"),
     totalAmount: v.number(),
     paymentId: v.optional(v.string()),
+    razorpayPaymentId: v.optional(v.string()),
     razorpayOrderId: v.optional(v.string()),
     quantity: v.optional(v.union(v.string(), v.number())),
     unit: v.optional(v.string()),
     type: v.optional(v.union(v.literal("sample"), v.literal("bulk"))),
+    rentalStartDate: v.optional(v.union(v.string(), v.number())),
+    rentalEndDate: v.optional(v.union(v.string(), v.number())),
+    insuranceSelected: v.optional(v.boolean()),
     deliveryAddress: v.optional(
       v.union(
         v.object({
@@ -28,6 +104,7 @@ export const createOrder = mutation({
     ),
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
+    invoiceUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.buyerId && args.farmerId && typeof args.quantity === "number" && args.unit && args.type) {
@@ -38,15 +115,22 @@ export const createOrder = mutation({
         totalAmount: args.totalAmount,
         paymentStatus: args.paymentId ? "paid" : "pending",
         paymentId: args.paymentId,
+        razorpayPaymentId: args.razorpayPaymentId ?? args.paymentId,
+        razorpayOrderId: args.razorpayOrderId,
+        invoiceUrl: args.invoiceUrl,
         status: "escrow",
         type: args.type,
         quantity: args.quantity,
         unit: args.unit,
         buyerConfirmed: false,
+        rentalStartDate: args.rentalStartDate,
+        rentalEndDate: args.rentalEndDate,
+        insuranceSelected: args.insuranceSelected,
         escrowReleaseAt: Date.now() + 72 * 60 * 60 * 1000,
         deliveryAddress: args.deliveryAddress,
         createdAt: Date.now(),
         orderStatus: "placed",
+        trackingTimeline: initialTrackingTimeline(),
       });
 
       return created;
@@ -71,8 +155,8 @@ export const createOrder = mutation({
     const oldStockStr = String(listing.quantity || "0").replace(/[^\d.]/g, "");
     const purStockStr = String(args.quantity || "0").replace(/[^\d.]/g, "");
     
-    let oldStockNum = Number.parseFloat(oldStockStr);
-    let purStockNum = Number.parseFloat(purStockStr);
+    const oldStockNum = Number.parseFloat(oldStockStr);
+    const purStockNum = Number.parseFloat(purStockStr);
     
     if (!Number.isNaN(oldStockNum) && !Number.isNaN(purStockNum)) {
        let newStock = oldStockNum - purStockNum;
@@ -97,18 +181,24 @@ export const createOrder = mutation({
       totalAmount: args.totalAmount,
       paymentStatus: "paid",
       paymentId: args.paymentId,
+      razorpayPaymentId: args.razorpayPaymentId ?? args.paymentId,
       razorpayOrderId: args.razorpayOrderId,
+      invoiceUrl: args.invoiceUrl,
       orderStatus: "placed",
       status: "escrow",
       type: "bulk",
       quantity: Number.parseFloat(String(args.quantity).replace(/[^\d.]/g, "")) || 0,
       unit: "kg",
       buyerConfirmed: false,
+      rentalStartDate: args.rentalStartDate,
+      rentalEndDate: args.rentalEndDate,
+      insuranceSelected: args.insuranceSelected,
       escrowReleaseAt: Date.now() + 72 * 60 * 60 * 1000,
       createdAt: Date.now(),
       deliveryAddress: args.deliveryAddress,
       latitude: args.latitude,
       longitude: args.longitude,
+      trackingTimeline: initialTrackingTimeline(),
     });
   },
 });
@@ -126,7 +216,8 @@ export const getBuyerOrders = query({
     const orders = await ctx.db
       .query("orders")
       .withIndex("by_buyer", (q) => q.eq("buyerId", buyer._id))
-      .collect();
+      .order("desc")
+      .take(200);
 
     // Map the listings and farmer details
     const results = [];
@@ -142,13 +233,67 @@ export const getBuyerOrders = query({
       const farmerUser = farmer as Doc<"users"> | null;
       results.push({ 
         ...order, 
-        cropName: listing?.cropName || "Direct Farm Purchase",
-        farmerName: farmerUser?.name || "Verified Farmer",
+        assetCategory: listing?.assetCategory || "Direct Rental",
+        farmerName: farmerUser?.name || "Verified Owner",
         farmerEmail: farmerUser?.email || "contact@farmdirect.com",
         farmerPhone: farmerUser?.phone || "Phone Hidden",
-        farmerImage: farmerUser?.imageUrl,
+        farmerImage: farmerUser?.avatarUrl ?? farmerUser?.imageUrl,
+        trackingTimeline: ensureTrackingTimeline(order),
       });
     }
+    return results;
+  },
+});
+
+export const getRenterOrdersDetailed = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const renter = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+
+    if (!renter) return [];
+
+    const ordersById = await ctx.db
+      .query("orders")
+      .withIndex("by_buyer", (q) => q.eq("buyerId", renter._id))
+      .order("desc")
+      .take(200);
+    const ordersByClerkId = await ctx.db
+      .query("orders")
+      .withIndex("by_buyer", (q) => q.eq("buyerId", args.clerkId))
+      .order("desc")
+      .take(200);
+
+    const orders = dedupeOrders([...ordersById, ...ordersByClerkId]);
+
+    const results = [];
+    for (const order of orders) {
+      const listing = await ctx.db.get(order.listingId);
+      const owner: Doc<"users"> | null =
+        typeof order.farmerId === "string"
+          ? await ctx.db
+              .query("users")
+              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
+              .unique()
+          : ((await ctx.db.get(order.farmerId)) as Doc<"users"> | null);
+
+      results.push({
+        ...order,
+        title: listing?.title ?? listing?.assetCategory ?? "Equipment Rental",
+        assetCategory: listing?.assetCategory ?? "Equipment Rental",
+        imageUrl: listing?.imageUrl,
+        location: listing?.location ?? "Unknown Region",
+        ownerName: owner?.name ?? "Verified Owner",
+        ownerImage: owner?.avatarUrl ?? owner?.imageUrl,
+        ownerTrustScore: owner?.trustScore ?? 78,
+        trackingTimeline: ensureTrackingTimeline(order),
+        currentTrackingStatus:
+          ensureTrackingTimeline(order)[ensureTrackingTimeline(order).length - 1]?.status ?? "Payment Secured",
+      });
+    }
+
     return results;
   },
 });
@@ -166,7 +311,8 @@ export const getFarmerOrders = query({
     const orders = await ctx.db
       .query("orders")
       .withIndex("by_farmer", (q) => q.eq("farmerId", farmer._id))
-      .collect();
+      .order("desc")
+      .take(200);
       
     // Map the listings and buyer details
     const results = [];
@@ -182,11 +328,12 @@ export const getFarmerOrders = query({
       const buyerUser = buyer as Doc<"users"> | null;
       results.push({ 
         ...order, 
-        cropName: listing?.cropName || "Direct Farm Purchase",
-        buyerName: buyerUser?.name || "Anonymous Buyer",
+        assetCategory: listing?.assetCategory || "Direct Rental",
+        buyerName: buyerUser?.name || "Anonymous Renter",
         buyerEmail: buyerUser?.email || "-",
         buyerPhone: buyerUser?.phone || "No Contact",
-        buyerImage: buyerUser?.imageUrl,
+        buyerImage: buyerUser?.avatarUrl ?? buyerUser?.imageUrl,
+        trackingTimeline: ensureTrackingTimeline(order),
       });
     }
     return results;
@@ -222,13 +369,14 @@ export const getOrderDetails = query({
 
       return {
         ...order,
-        cropName: listing?.cropName || "Direct Farm Purchase",
+        assetCategory: listing?.assetCategory || "Direct Rental",
         quantity: listing?.quantity || "Various",
         location: listing?.location || "Unknown",
-        farmerName: farmerUser?.name || "Verified Farmer",
-        farmerEmail: farmerUser?.email || "contact@farmdirect.com",
-        buyerName: buyerUser?.name || "Buyer",
+        farmerName: farmerUser?.name || "Verified Owner",
+        farmerEmail: farmerUser?.email || "contact@agrirent.com",
+        buyerName: buyerUser?.name || "Renter",
         buyerEmail: buyerUser?.email || "-",
+        trackingTimeline: ensureTrackingTimeline(order),
       };
     } catch (e) {
       return null;
@@ -251,17 +399,31 @@ export const updateOrderStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) {
+      throw new Error("Order not found");
+    }
+
     const normalizedStatus =
       args.orderStatus === "placed"
         ? "escrow"
         : args.orderStatus === "cancelled"
           ? "disputed"
+          : args.orderStatus === "delivered"
+            ? "completed"
           : args.orderStatus;
 
     await ctx.db.patch(args.orderId, {
       orderStatus: args.orderStatus,
       status: normalizedStatus,
       buyerConfirmed: args.orderStatus === "completed" ? true : undefined,
+      trackingTimeline: [
+        ...ensureTrackingTimeline(order),
+        createTrackingEvent(
+          normalizeTrackingStatus(args.orderStatus),
+          `Order status updated to ${args.orderStatus.replace(/_/g, " ")}.`
+        ),
+      ],
     });
   },
 });
@@ -330,12 +492,30 @@ export const releaseEscrow = mutation({
 
     await ctx.db.patch(args.orderId, {
       status: "completed",
-      orderStatus: "delivered",
+      orderStatus: "completed",
       buyerConfirmed: args.buyerConfirmed ?? true,
       escrowReleaseAt: Date.now(),
+      trackingTimeline: [
+        ...ensureTrackingTimeline(order),
+        createTrackingEvent("Returned", "Rental return was confirmed and the order was completed."),
+      ],
     });
 
     return { success: true, data: { orderId: args.orderId } } as const;
+  },
+});
+
+export const attachInvoiceUrl = mutation({
+  args: {
+    orderId: v.id("orders"),
+    invoiceUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.orderId, {
+      invoiceUrl: args.invoiceUrl,
+    });
+
+    return { success: true } as const;
   },
 });
 
@@ -415,8 +595,8 @@ export const getActiveFarmerLogistics = query({
         lng: Number(order.longitude.toFixed(6)),
         buyerName: buyerUser?.name ?? "Buyer",
         buyerId: String(order.buyerId),
-        buyerImage: buyerUser?.imageUrl,
-        cropName: listing?.cropName ?? "Crop",
+        buyerImage: buyerUser?.avatarUrl ?? buyerUser?.imageUrl,
+        cropName: listing?.assetCategory ?? "Asset",
         quantityLabel: `${quantityValue} ${quantityUnit}`.trim(),
         status: order.orderStatus ?? "pending",
         imageUrl: listing?.imageUrl,
@@ -434,8 +614,8 @@ export const getActiveFarmerLogistics = query({
       data: {
         farmer: {
           name: farmer.name,
-          lat: farmer.lat ?? null,
-          lng: farmer.lng ?? null,
+          lat: farmer.location?.lat ?? farmer.lat ?? null,
+          lng: farmer.location?.lng ?? farmer.lng ?? null,
         },
         activeOrders: points,
       },
@@ -504,5 +684,107 @@ export const getCrossRoleSummary = query({
         activeBuyerPurchases,
       },
     } as const;
+  },
+});
+
+export const getRenterActiveRentals = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const orders = await ctx.runQuery(api.orders.getRenterOrdersDetailed, { clerkId: args.clerkId });
+    return orders.filter((order) => (order.orderStatus ?? "pending") !== "pending");
+  },
+});
+
+export const getRenterTrackingOrders = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const orders = await ctx.runQuery(api.orders.getRenterOrdersDetailed, { clerkId: args.clerkId });
+    return orders.filter((order) => {
+      const status = order.orderStatus ?? "pending";
+      return status !== "pending" && status !== "cancelled";
+    });
+  },
+});
+
+export const getOwnerTrackingOrders = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const orders = await ctx.runQuery(api.orders.getFarmerOrders, { clerkId: args.clerkId });
+    const results = [];
+
+    for (const order of orders) {
+      const listing = await ctx.db.get(order.listingId);
+      const renter = await resolveUser(ctx, order.buyerId);
+
+      results.push({
+        ...order,
+        title: listing?.title ?? listing?.assetCategory ?? "Equipment Rental",
+        imageUrl: listing?.imageUrl,
+        location: listing?.location ?? "Unknown Region",
+        renterName: renter?.name ?? order.buyerName ?? "Renter",
+        renterAvatarUrl: renter?.avatarUrl ?? renter?.imageUrl ?? order.buyerImage,
+        renterTrustScore: renter?.trustScore ?? 74,
+        trackingTimeline: ensureTrackingTimeline(order as Doc<"orders">),
+        currentTrackingStatus:
+          ensureTrackingTimeline(order as Doc<"orders">)[ensureTrackingTimeline(order as Doc<"orders">).length - 1]?.status ??
+          "Payment Secured",
+      });
+    }
+
+    return results.filter((order) => {
+      const status = order.orderStatus ?? "pending";
+      return status !== "pending" && status !== "cancelled";
+    });
+  },
+});
+
+export const appendTrackingEvent = mutation({
+  args: {
+    orderId: v.id("orders"),
+    eventType: v.union(v.literal("handover"), v.literal("in_use"), v.literal("return")),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) {
+      return { success: false, error: "Order not found" } as const;
+    }
+
+    const eventMap = {
+      handover: {
+        status: "Asset Handover",
+        description: "Owner confirmed the asset handover to the renter.",
+        orderStatus: "shipped" as const,
+        statusValue: "shipped" as const,
+      },
+      in_use: {
+        status: "In Use",
+        description: "Rental has started and the equipment is now in active use.",
+        orderStatus: "delivered" as const,
+        statusValue: "completed" as const,
+      },
+      return: {
+        status: "Returned",
+        description: "Owner confirmed the equipment return and closed the rental cycle.",
+        orderStatus: "completed" as const,
+        statusValue: "completed" as const,
+      },
+    } as const;
+
+    const nextEvent = eventMap[args.eventType];
+    const currentTimeline = ensureTrackingTimeline(order);
+    const alreadyLogged = currentTimeline.some((entry) => entry.status === nextEvent.status);
+
+    if (alreadyLogged) {
+      return { success: true, data: order } as const;
+    }
+
+    await ctx.db.patch(args.orderId, {
+      orderStatus: nextEvent.orderStatus,
+      status: nextEvent.statusValue,
+      buyerConfirmed: args.eventType === "return" ? true : order.buyerConfirmed,
+      trackingTimeline: [...currentTimeline, createTrackingEvent(nextEvent.status, nextEvent.description)],
+    });
+
+    return { success: true, data: { orderId: args.orderId, status: nextEvent.status } } as const;
   },
 });

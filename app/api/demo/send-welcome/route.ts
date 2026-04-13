@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Payload;
     const email = body.email?.trim();
     const name = body.name?.trim() || "Demo User";
-    const role = body.role?.trim() || "Buyer";
+    const role = body.role?.trim() || "Renter";
 
     if (!email) {
       return NextResponse.json({ success: false, message: "Email is required." }, { status: 400 });

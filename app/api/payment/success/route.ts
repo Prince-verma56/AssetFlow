@@ -4,23 +4,23 @@ import { sendBuyerReceiptEmail, sendFarmerSaleAlert } from "@/lib/mails/mails";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { buyerName, buyerEmail, crop, buyerPrice, farmerName } = body;
+    const { renterName, renterEmail, equipment, buyerPrice, ownerName } = body;
     const nowIso = new Date().toISOString();
 
-    // Send successful purchase receipt via Resend
-    if (buyerEmail) {
+    // Send successful rent receipt via Resend
+    if (renterEmail) {
       await sendBuyerReceiptEmail({
-        buyerEmail,
-        buyerName: buyerName || "Buyer",
-        crop: crop || "Crop",
+        buyerEmail: renterEmail,
+        buyerName: renterName || "Renter",
+        crop: equipment || "Equipment",
         amount: buyerPrice || 0,
         quantity: "N/A",
         unitPricePerKg: buyerPrice || 0,
         orderId: "manual_order",
         paymentId: "manual_payment",
         gatewayOrderId: "manual_gateway_order",
-        farmerName: farmerName || "Farmer",
-        farmerEmail: "farmer@example.com",
+        farmerName: ownerName || "Owner",
+        farmerEmail: "owner@example.com",
         sourceLocation: "Marketplace",
         deliveryAddress: {
           street: "-",
@@ -28,18 +28,18 @@ export async function POST(req: Request) {
           state: "-",
           pincode: "-",
         },
-        productImageUrl: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=800",
+        productImageUrl: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=equipment&q=80&w=800",
         invoiceDateIso: nowIso,
       });
     }
     
-    // Notify the farmer that order arrived
+    // Notify the owner that order arrived
     await sendFarmerSaleAlert({
-      farmerEmail: "farmer@example.com",
-      farmerName: farmerName || "Farmer",
-      crop: crop || "Crop",
+      farmerEmail: "owner@example.com",
+      farmerName: ownerName || "Owner",
+      crop: equipment || "Equipment",
       amount: buyerPrice || 0,
-      buyerName: buyerName || "Buyer",
+      buyerName: renterName || "Renter",
       orderId: "manual_order",
       sourceLocation: "Marketplace",
     });

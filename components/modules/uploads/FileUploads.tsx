@@ -1,6 +1,5 @@
 "use client";
 
-import { CldUploadWidget, type CloudinaryUploadWidgetResults } from "next-cloudinary";
 import { Button } from "@/components/ui/button";
 import { ImagePlus, Loader2, Trash, Upload } from "lucide-react";
 import Image from "next/image";
@@ -29,6 +28,7 @@ function isVideoUrl(url: string) {
 export const FileUpload = ({ value, onChange, onRemove }: FileUploadProps) => {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string>("");
   const [pendingResourceType, setPendingResourceType] = useState<"image" | "video">("image");
   const [isUploadingDrop, setIsUploadingDrop] = useState(false);
@@ -174,94 +174,69 @@ export const FileUpload = ({ value, onChange, onRemove }: FileUploadProps) => {
           </div>
         </div>
       ) : (
-        <CldUploadWidget
-          config={{
-            cloud: {
-              cloudName,
-            },
-          }}
-          uploadPreset={uploadPreset}
-          onSuccess={(result: CloudinaryUploadWidgetResults) => {
-            const info = result.info;
-            if (!info || typeof info !== "object" || !("secure_url" in info)) {
-              toast.error("Upload failed: missing uploaded file URL");
-              return;
-            }
-
-            const secureUrl = info.secure_url;
-            if (typeof secureUrl !== "string" || secureUrl.length === 0) {
-              toast.error("Upload failed: invalid file URL");
-              return;
-            }
-
-            setPendingUrl(secureUrl);
-            toast.success("Processing complete. Confirm upload to continue.");
-          }}
-          onError={(error) => {
-            const message =
-              typeof error === "object" &&
-              error !== null &&
-              "statusText" in error &&
-              typeof error.statusText === "string"
-                ? error.statusText
-                : "Upload failed. Check Cloudinary preset/settings.";
-            toast.error(message);
-          }}
+        <div
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          className={cn(
+            "w-full rounded-xl border-2 border-dashed p-6 transition-all duration-200",
+            "bg-muted/40",
+            isDragActive
+              ? "border-primary bg-primary/10 shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]"
+              : "border-border hover:border-ring/50"
+          )}
         >
-          {({ open }) => {
-            return (
-              <div
-                onDragEnter={onDragEnter}
-                onDragLeave={onDragLeave}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                className={cn(
-                  "w-full rounded-xl border-2 border-dashed p-6 transition-all duration-200",
-                  "bg-muted/40",
-                  isDragActive
-                    ? "border-primary bg-primary/10 shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]"
-                    : "border-border hover:border-ring/50"
-                )}
-              >
-                <div className="flex flex-col items-center gap-3 text-center">
-                  {isUploadingDrop ? (
-                    <>
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">Uploading dropped file...</p>
-                    </>
-                  ) : (
-                    <>
-                      <Upload
-                        className={cn(
-                          "h-6 w-6",
-                          isDragActive ? "text-primary" : "text-muted-foreground"
-                        )}
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        {isDragActive
-                          ? "Drop file here to upload"
-                          : "Drag and drop media here, or click to browse"}
-                      </p>
-                    </>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              await uploadFileDirectly(file);
+              event.target.value = "";
+            }}
+          />
+          <div className="flex flex-col items-center gap-3 text-center">
+            {isUploadingDrop ? (
+              <>
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Uploading dropped file...</p>
+              </>
+            ) : (
+              <>
+                <Upload
+                  className={cn(
+                    "h-6 w-6",
+                    isDragActive ? "text-primary" : "text-muted-foreground"
                   )}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full h-12"
-                    disabled={isUploadingDrop || !canUpload}
-                    onClick={() => {
-                      if (!ensureConfig()) return;
-                      open();
-                    }}
-                  >
-                    <ImagePlus className="h-5 w-5 mr-2" />
-                    Upload Image (Optional)
-                  </Button>
-                </div>
-              </div>
-            );
-          }}
-        </CldUploadWidget>
+                />
+                <p className="text-sm text-muted-foreground">
+                  {isDragActive
+                    ? "Drop file here to upload"
+                    : canUpload
+                      ? "Drag and drop media here, or click to browse"
+                      : "Cloudinary is not configured yet. You can still publish without an image."}
+                </p>
+              </>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full h-12"
+              disabled={isUploadingDrop || !canUpload}
+              onClick={() => {
+                if (!ensureConfig()) return;
+                fileInputRef.current?.click();
+              }}
+            >
+              <ImagePlus className="h-5 w-5 mr-2" />
+              Upload Image (Optional)
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

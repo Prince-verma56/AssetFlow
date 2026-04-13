@@ -12,19 +12,33 @@ export default defineSchema({
     roles: v.optional(v.array(v.union(v.literal("farmer"), v.literal("buyer")))),
     hasOnboarded: v.boolean(),
     imageUrl: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
     phone: v.optional(v.string()),
+    location: v.optional(
+      v.object({
+        lat: v.number(),
+        lng: v.number(),
+      })
+    ),
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
     locationUpdatedAt: v.optional(v.number()),
+    bio: v.optional(v.string()),
+    trustScore: v.optional(v.number()),
   }).index("by_clerkId", ["clerkId"]),
 
   // --- PRODUCT MODULE: LISTINGS (The Farmer's Crop) ---
   listings: defineTable({
     farmerId: v.id("users"),
-    cropName: v.string(),
+    assetCategory: v.string(),
+    title: v.string(),
+    categoryId: v.optional(v.string()),
+    subCategoryId: v.optional(v.string()),
     description: v.string(),
-    pricePerKg: v.number(),
+    pricePerDay: v.number(),
     quantity: v.string(),
+    minimumRentalDays: v.optional(v.number()),
+    condition: v.optional(v.union(v.literal("Like New"), v.literal("Excellent"), v.literal("Good"), v.literal("Fair"))),
     // AI Insights (The 'Wow' Factor)
     aiSuggestedPrice: v.number(),
     aiRecommendation: v.optional(v.string()), // "Sell now" or "Wait"
@@ -44,8 +58,10 @@ export default defineSchema({
   })
   .index("by_status", ["status"])
   .index("by_farmer", ["farmerId"])
-  .index("by_crop", ["cropName"])
-  .index("by_crop_and_status", ["cropName", "status"])
+  .index("by_assetCategory", ["assetCategory"])
+  .index("by_categoryId_and_status", ["categoryId", "status"])
+  .index("by_assetCategory_and_status", ["assetCategory", "status"])
+  .index("by_location_and_status", ["location", "status"])
   .index("by_approxLat_and_approxLng", ["approxLat", "approxLng"]),
 
   // --- PRODUCT MODULE: ORDERS (The Transactions) ---
@@ -69,11 +85,16 @@ export default defineSchema({
     ),
     escrowReleaseAt: v.optional(v.number()),
     buyerConfirmed: v.optional(v.boolean()),
+    rentalStartDate: v.optional(v.union(v.string(), v.number())),
+    rentalEndDate: v.optional(v.union(v.string(), v.number())),
+    insuranceSelected: v.optional(v.boolean()),
     createdAt: v.optional(v.number()),
     // Payment Integration Fields
     paymentStatus: v.union(v.literal("pending"), v.literal("paid"), v.literal("failed")),
     paymentId: v.optional(v.string()), // For Razorpay Payment ID (rzp_pay_xxx)
+    razorpayPaymentId: v.optional(v.string()),
     razorpayOrderId: v.optional(v.string()), // For Razorpay Order ID (order_xxx)
+    invoiceUrl: v.optional(v.string()),
     orderStatus: v.union(
       v.literal("pending"),
       v.literal("escrow"),
@@ -97,10 +118,36 @@ export default defineSchema({
     ),
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
+    trackingTimeline: v.optional(
+      v.array(
+        v.object({
+          status: v.string(),
+          timestamp: v.number(),
+          description: v.string(),
+        })
+      )
+    ),
   })
   .index("by_buyer", ["buyerId"])
   .index("by_farmer", ["farmerId"])
   .index("by_status", ["status"]),
+
+  wishlist: defineTable({
+    renterId: v.string(),
+    listingId: v.id("listings"),
+    savedAt: v.number(),
+  })
+    .index("by_renterId", ["renterId"])
+    .index("by_renterId_and_listingId", ["renterId", "listingId"]),
+
+  savedOwners: defineTable({
+    renterId: v.string(),
+    ownerId: v.string(),
+    savedAt: v.number(),
+  })
+    .index("by_renterId", ["renterId"])
+    .index("by_renterId_and_ownerId", ["renterId", "ownerId"])
+    .index("by_ownerId", ["ownerId"]),
 
   messages: defineTable({
     listingId: v.id("listings"),

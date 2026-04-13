@@ -7,6 +7,8 @@ import { internal } from "../_generated/api";
 import { ANCHOR_DATE_ISO, ANCHOR_MONTH_LABEL, ANCHOR_SEASON_CONTEXT } from "../../lib/time-anchor";
 import { fetchAgmarknetRecords, seasonalFallbackRecords, type AgmarknetRecord } from "../../lib/agmarknet";
 
+import { ASSET_CATEGORIES } from "../../lib/constants/categories";
+
 const OracleSchema = z.object({
   fairPrice: z.number(),
   confidence: z.number().min(0).max(100),
@@ -17,7 +19,9 @@ const OracleSchema = z.object({
 
 export const runPriceOracle = action({
   args: {
-    commodity: v.string(),
+    commodity: v.string(), // Keeping parameter name for backwards comp, but it's now assetCategory
+    categoryId: v.optional(v.string()),
+    subCategoryId: v.optional(v.string()),
     state: v.string(),
     city: v.string(),
     quantity: v.number(),
@@ -42,6 +46,12 @@ export const runPriceOracle = action({
     const isFallback = mandi.source === "fallback";
     console.log(`[Oracle] Running for ${args.commodity}. Source: ${mandi.source}. Mandi Modal: ${mandi.modalPrice}`);
 
+    // Resolve category and subcategory names for AI context
+    const mainCat = ASSET_CATEGORIES.find(c => c.id === args.categoryId);
+    const subCat = mainCat?.subCategories.find(s => s.id === args.subCategoryId);
+    const categoryName = mainCat?.name || args.categoryId || "General Equipment";
+    const subCategoryName = subCat?.name || args.subCategoryId || "Standard Class";
+
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       console.error("[Oracle] OPENROUTER_API_KEY is missing");
@@ -49,23 +59,21 @@ export const runPriceOracle = action({
     }
 
     const systemPrompt =
-      `Today is ${ANCHOR_MONTH_LABEL} 7, 2026 (${ANCHOR_SEASON_CONTEXT}). ` +
-      `Current month: ${ANCHOR_MONTH_LABEL}. Current date: ${ANCHOR_DATE_ISO}. ` +
-      "You are a Senior Indian Agricultural Market Analyst with deep knowledge of the 2026 Rabi Harvest. " +
-      "Your goal is to provide a dynamic, highly-accurate fair price forecast that accounts for current supply/demand in April 2026. " +
-      "When given Mandi prices (Min, Max, Modal), analyze the spread and suggest a fairPrice (INR/quintal) that the farmer should target. " +
-      "Include reasoning about seasonal factors like 'peak arrival pressure' or 'procurement targets' to show you are doing real research. " +
+      `Today is ${ANCHOR_MONTH_LABEL} 7, 2026. ` +
+      "You are a Senior Equipment Rental Advisor and Marketplace Evaluator. " +
+      "Your goal is to provide a dynamic, highly-accurate fair daily rental price forecast for agricultural and professional equipment. " +
+      "When given baseline prices, analyze the supply/demand and suggest a fairPrice (INR/day) that the owner should target. " +
+      `Include reasoning about seasonal factors (${ANCHOR_SEASON_CONTEXT}) or equipment lifecycle depreciation to show you are doing real research. ` +
       "Return strict JSON with keys: fairPrice, confidence, recommendation, reasoning, forecast14. " +
-      "forecast14 must be 14 daily price predictions for April 8 to April 21, 2026. " +
-      (isFallback 
-        ? "CRITICAL: The provided data is a seasonal baseline. Use your internal knowledge of the April 2026 harvest in this region to adjust the fair price dynamically. Warn the farmer about 'Low Confidence' due to missing live data." 
+      "forecast14 must be 14 daily price predictions. " +
+      (args.categoryId 
+        ? `\nThe owner is renting out equipment in the [${categoryName}] -> [${subCategoryName}] classification. Evaluate if their daily rate is fair.`
         : "");
 
     const userPrompt =
-      (isFallback ? "WARNING: No live scraper data. Using seasonal harvest models. " : "LIVE SCRAPER DATA AVAILABLE. ") +
-      `Market Location: ${args.city}, ${args.state}. Commodity: ${args.commodity}. Quantity: ${args.quantity} ${args.unit}. ` +
-      `Current Mandi Stats from ${mandi.date}: Min: ₹${mandi.minPrice}, Max: ₹${mandi.maxPrice}, Modal: ₹${mandi.modalPrice}. ` +
-      "Provide a fair farmgate price that beats local middlemen and reflect on the market conditions for this specific crop in April 2026.";
+      `Market Location: ${args.city}, ${args.state}. Equipment: ${args.commodity}. Quantity: ${args.quantity} ${args.unit}. ` +
+      `Current Baseline Stats from ${mandi.date}: Min: ₹${mandi.minPrice}, Max: ₹${mandi.maxPrice}, Modal: ₹${mandi.modalPrice}. ` +
+      "Provide a fair rental price that beats local middlemen and reflect on the market conditions for this specific equipment.";
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",

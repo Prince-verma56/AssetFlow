@@ -26,8 +26,8 @@ type InitPaymentParams = {
 };
 
 type EscrowCheckoutParams = {
-  buyerId: string;
-  farmerId: string;
+  renterId: string;
+  ownerId: string;
   listingId: Id<"listings">;
   type: "sample" | "bulk";
   quantity: number;
@@ -73,7 +73,7 @@ export const useRazorpay = () => {
         gatewayOrderId: data.gatewayOrderId,
         amountInSubunits: data.amountInSubunits,
         currency: data.currency,
-        businessName: params.businessName ?? "Farmer Marketplace",
+        businessName: params.businessName ?? "Owner Marketplace",
         description: params.description,
         customer: params.customer,
         themeColor: params.themeColor,
@@ -130,14 +130,16 @@ export const useRazorpay = () => {
       });
 
       const orderId = await createOrder({
-        buyerId: params.buyerId,
-        farmerId: params.farmerId,
+        buyerId: params.renterId,
+        farmerId: params.ownerId,
         listingId: params.listingId,
         type: params.type,
         quantity: params.quantity,
         unit: params.unit,
         totalAmount: params.totalAmount,
         paymentId: success.paymentId,
+        razorpayPaymentId: success.paymentId,
+        razorpayOrderId: success.gatewayOrderId,
         deliveryAddress: params.deliveryAddress,
       });
 

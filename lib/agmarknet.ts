@@ -40,6 +40,34 @@ export const MANDI_MARKET_OPTIONS: Record<string, string[]> = {
   "Madhya Pradesh": ["Indore", "Bhopal", "Ujjain", "Gwalior"],
 };
 
+export const MANDI_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  // Rajasthan
+  Jaipur: { lat: 26.9124, lng: 75.7873 },
+  Kota: { lat: 25.1815, lng: 75.8323 },
+  Alwar: { lat: 27.5609, lng: 76.6250 },
+  Bikaner: { lat: 28.0229, lng: 73.3119 },
+  // Punjab
+  Ludhiana: { lat: 30.9010, lng: 75.8573 },
+  Amritsar: { lat: 31.6340, lng: 74.8723 },
+  Patiala: { lat: 30.3398, lng: 76.3869 },
+  Moga: { lat: 30.8175, lng: 75.1729 },
+  // Haryana
+  Karnal: { lat: 29.6857, lng: 76.9905 },
+  Hisar: { lat: 29.1492, lng: 75.7217 },
+  Sirsa: { lat: 29.5312, lng: 75.0298 },
+  Rohtak: { lat: 28.8955, lng: 76.5892 },
+  // UP
+  Kanpur: { lat: 26.4499, lng: 80.3319 },
+  Lucknow: { lat: 26.8467, lng: 80.9462 },
+  Varanasi: { lat: 25.3176, lng: 82.9739 },
+  Agra: { lat: 27.1767, lng: 78.0081 },
+  // MP
+  Indore: { lat: 22.7196, lng: 75.8577 },
+  Bhopal: { lat: 23.2599, lng: 77.4126 },
+  Ujjain: { lat: 23.1793, lng: 75.7849 },
+  Gwalior: { lat: 26.2124, lng: 78.1772 },
+};
+
 function parsePrice(value: string | undefined) {
   const normalized = String(value ?? "")
     .replace(/,/g, "")

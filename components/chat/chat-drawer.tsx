@@ -16,7 +16,7 @@ export type ChatDrawerProps = {
   onOpenChange: (value: boolean) => void;
   listingId: Id<"listings">;
   listingName: string;
-  farmerName: string;
+  ownerName: string;
   senderId: string;
   receiverId: string;
 };
@@ -26,7 +26,7 @@ export function ChatDrawer({
   onOpenChange,
   listingId,
   listingName,
-  farmerName,
+  ownerName,
   senderId,
   receiverId,
 }: ChatDrawerProps) {
@@ -55,7 +55,7 @@ export function ChatDrawer({
       <SheetContent side="right" className="w-full p-0 sm:max-w-lg">
         <SheetHeader className="border-b px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2">
-            <span>{farmerName}</span>
+            <span>{ownerName}</span>
             <Badge variant="outline" className="text-[10px]">
               Online
             </Badge>

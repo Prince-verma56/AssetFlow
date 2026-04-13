@@ -3,15 +3,13 @@
 import React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getCropImage } from "@/lib/asset-mapping";
 import { DashboardSkeleton } from "@/components/sidebar/dashboard-skeleton";
 import { motion } from "framer-motion";
-import Link from "next/link";
-import Image from "next/image";
 import { Sparkles, Package, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,28 +31,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useMutation } from "convex/react";
 import { ClientAnimationWrapper } from "@/components/ui/preloader/ClientAnimationWrapper";
+import { AddAssetModal } from "@/components/admin/add-asset-modal";
+import { ListingMedia } from "@/components/listings/listing-media";
+
+type EditingListing = {
+  _id: Id<"listings">;
+  assetCategory: string;
+  description: string;
+  pricePerDay: string;
+  quantity: string;
+};
 
 export default function InventoryPage() {
   const { user, isLoaded } = useUser();
-  
-  const convexUser = useQuery(api.users.getRoleByClerkId, 
-    isLoaded && user?.id ? { clerkId: user.id } : "skip"
-  );
 
-  const listings = useQuery(api.listings.listByFarmer, 
-    convexUser?.id ? { farmerId: convexUser.id } : "skip"
-  );
+  const listingsResponse = useQuery(api.listings.getListingsByFarmer, user?.id ? { clerkId: user.id } : "skip");
+  const listings = listingsResponse?.success ? listingsResponse.data : [];
 
   const updateListing = useMutation(api.listings.updateListing);
   const deleteListing = useMutation(api.listings.deleteListing);
-  const [editingListing, setEditingListing] = React.useState<any>(null);
+  const [editingListing, setEditingListing] = React.useState<EditingListing | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
 
-  const handleDelete = async (id: any) => {
+  const handleDelete = async (id: Id<"listings">) => {
     if (confirm("Are you sure you want to delete this listing?")) {
       try {
         await deleteListing({ listingId: id });
         toast.success("Listing deleted successfully");
-      } catch (error) {
+      } catch {
         toast.error("Failed to delete listing");
       }
     }
@@ -68,17 +72,17 @@ export default function InventoryPage() {
       await updateListing({
         listingId: editingListing._id,
         description: editingListing.description,
-        pricePerKg: Number(editingListing.pricePerKg),
+        pricePerDay: Number(editingListing.pricePerDay),
         quantity: editingListing.quantity,
       });
       toast.success("Listing updated successfully");
       setEditingListing(null);
-    } catch (error) {
+    } catch {
       toast.error("Failed to update listing");
     }
   };
 
-  if (!isLoaded || listings === undefined) {
+  if (!isLoaded || listingsResponse === undefined) {
     return <DashboardSkeleton />;
   }
 
@@ -87,17 +91,19 @@ export default function InventoryPage() {
       <Dialog open={!!editingListing} onOpenChange={() => setEditingListing(null)}>
         <DialogContent className="sm:max-w-[425px] rounded-[2rem]">
           <DialogHeader>
-            <DialogTitle>Edit {editingListing?.cropName}</DialogTitle>
+            <DialogTitle>Edit {editingListing?.assetCategory}</DialogTitle>
             <DialogDescription>Update your listing details here.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpdate} className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="price">Price per kg (₹)</Label>
+              <Label htmlFor="price">Price per day (₹)</Label>
               <Input
                 id="price"
                 type="number"
-                value={editingListing?.pricePerKg || ""}
-                onChange={(e) => setEditingListing({ ...editingListing, pricePerKg: e.target.value })}
+                value={editingListing?.pricePerDay || ""}
+                onChange={(e) =>
+                  setEditingListing((prev) => (prev ? { ...prev, pricePerDay: e.target.value } : prev))
+                }
                 className="rounded-xl h-11"
               />
             </div>
@@ -106,7 +112,9 @@ export default function InventoryPage() {
               <Input
                 id="quantity"
                 value={editingListing?.quantity || ""}
-                onChange={(e) => setEditingListing({ ...editingListing, quantity: e.target.value })}
+                onChange={(e) =>
+                  setEditingListing((prev) => (prev ? { ...prev, quantity: e.target.value } : prev))
+                }
                 className="rounded-xl h-11"
               />
             </div>
@@ -115,7 +123,9 @@ export default function InventoryPage() {
               <Textarea
                 id="desc"
                 value={editingListing?.description || ""}
-                onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })}
+                onChange={(e) =>
+                  setEditingListing((prev) => (prev ? { ...prev, description: e.target.value } : prev))
+                }
                 className="rounded-xl min-h-[100px]"
               />
             </div>
@@ -128,16 +138,18 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
+      <AddAssetModal open={addOpen} onOpenChange={setAddOpen} />
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">My Inventory</h1>
-          <p className="text-muted-foreground">Manage your listed crops and AI price insights.</p>
+          <h1 className="text-2xl font-bold tracking-tight">My Equipment</h1>
+          <p className="text-muted-foreground">Manage your listed equipment and rental pricing.</p>
         </div>
-        <Button asChild className="bg-emerald-600 hover:bg-emerald-700 font-bold ml-auto shrink-0 shadow-sm transition-all focus:ring-2 focus:ring-emerald-500">
-          <Link href="/admin/inventory/create">
-            <Package className="mr-2 size-4" />
-            List New Crop
-          </Link>
+        <Button
+          className="bg-emerald-600 hover:bg-emerald-700 font-bold ml-auto shrink-0 shadow-sm transition-all focus:ring-2 focus:ring-emerald-500"
+          onClick={() => setAddOpen(true)}
+        >
+          + Add New Equipment
         </Button>
       </div>
 
@@ -149,14 +161,15 @@ export default function InventoryPage() {
               layoutId={listing._id}
               className="group"
             >
-              <Card className="overflow-hidden bg-card/50 backdrop-blur-md border border-primary/10 hover:border-primary/20 transition-all shadow-sm hover:shadow-md">
+              <Card className="overflow-hidden border border-zinc-200/70 bg-white shadow-sm transition-all hover:border-emerald-200 hover:shadow-lg dark:border-border dark:bg-card">
                 <div className="aspect-[16/9] overflow-hidden relative">
-                  <Image 
-                    src={listing.imageUrl || getCropImage(listing.cropName)} 
-                    alt={listing.cropName}
-                    fill
+                  <ListingMedia
+                    imageUrl={listing.imageUrl}
+                    alt={listing.title || listing.assetCategory}
+                    title={listing.title || listing.assetCategory}
+                    subtitle={listing.location}
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute top-2 right-2 flex flex-col items-end gap-2">
                     <div className="absolute top-2 left-2 flex flex-col gap-2">
@@ -167,7 +180,18 @@ export default function InventoryPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="rounded-xl">
-                          <DropdownMenuItem onClick={() => setEditingListing(listing)} className="gap-2 cursor-pointer">
+                          <DropdownMenuItem
+                            onClick={() =>
+                              setEditingListing({
+                                _id: listing._id,
+                                assetCategory: listing.assetCategory,
+                                description: listing.description,
+                                pricePerDay: String(listing.pricePerDay ?? ""),
+                                quantity: listing.quantity,
+                              })
+                            }
+                            className="gap-2 cursor-pointer"
+                          >
                             <Pencil className="size-4" /> Edit Listing
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDelete(listing._id)} className="gap-2 text-red-600 focus:text-red-600 cursor-pointer">
@@ -189,12 +213,12 @@ export default function InventoryPage() {
                 </div>
                 <CardHeader className="p-4 pb-2">
                   <CardTitle className="text-lg flex items-center justify-between">
-                    {listing.cropName}
+                    {listing.title || listing.assetCategory}
                     <div className="text-right">
                       {listing.aiSuggestedPrice && (
                         <p className="text-xs text-muted-foreground line-through decoration-emerald-500/50">₹{(listing.aiSuggestedPrice * 1.1).toFixed(2)}</p>
                       )}
-                      <span className="text-emerald-600 font-black">₹{listing.pricePerKg}/kg</span>
+                      <span className="text-emerald-600 font-black">₹{listing.pricePerDay}/day</span>
                     </div>
                   </CardTitle>
                   <CardDescription className="flex items-center gap-1">
@@ -206,11 +230,14 @@ export default function InventoryPage() {
                   {listing.description}
                 </CardContent>
                 <CardFooter className="p-4 pt-0 flex gap-2">
-                  <Button asChild variant="outline" size="sm" className="w-full gap-1.5 border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-800 font-bold transition-all">
-                    <Link href={`/admin?commodity=${listing.cropName}&city=${listing.location}`}>
-                      <Sparkles className="size-3.5 fill-emerald-500 text-emerald-500" />
-                      Run Market Oracle
-                    </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-1.5 border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-800 font-bold transition-all"
+                    onClick={() => toast.info("Price Oracle sync is available from the Dashboard.")}
+                  >
+                    <Sparkles className="size-3.5 fill-emerald-500 text-emerald-500" />
+                    Price Advisor
                   </Button>
                 </CardFooter>
               </Card>
@@ -220,8 +247,13 @@ export default function InventoryPage() {
           {listings.length === 0 && (
             <div className="col-span-full py-20 text-center">
               <Package className="size-12 mx-auto text-muted-foreground/20 mb-4" />
-              <h3 className="text-lg font-medium">No crops listed yet</h3>
-              <p className="text-muted-foreground">List your first crop to start using the AI Oracle.</p>
+              <h3 className="text-lg font-medium">No equipment listed yet</h3>
+              <p className="text-muted-foreground">Add your first asset to start earning from idle equipment.</p>
+              <div className="mt-6 flex justify-center">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 font-bold h-11 px-6" onClick={() => setAddOpen(true)}>
+                  + Add New Equipment
+                </Button>
+              </div>
             </div>
           )}
         </div>

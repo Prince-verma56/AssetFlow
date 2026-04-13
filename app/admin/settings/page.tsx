@@ -6,7 +6,7 @@ export default function SettingsPage() {
       <CardHeader>
         <CardTitle>Settings</CardTitle>
         <CardDescription>
-          Settings workspace is active. Connect this page to Convex data next for full farmer and buyer workflows.
+          Settings workspace is active. Connect this page to Convex data next for full owner and renter workflows.
         </CardDescription>
       </CardHeader>
       <CardContent>

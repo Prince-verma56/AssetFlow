@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -13,12 +12,15 @@ import { ChatDrawer } from "@/components/chat/chat-drawer";
 import { useRazorpay } from "@/hooks/use-razorpay";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { ListingMedia } from "@/components/listings/listing-media";
 
 export type BuyerListing = {
   id: string;
-  cropName: string;
+  assetCategory: string;
+  categoryId?: string;
+  subCategoryId?: string;
   description: string;
-  pricePerKg: number;
+  pricePerDay: number;
   quantity: string;
   location: string;
   imageUrl?: string;
@@ -55,8 +57,18 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
 
   const savingsPercent = useMemo(() => {
     if (!listing?.mandiModalPrice || listing.mandiModalPrice <= 0) return 0;
-    return ((listing.mandiModalPrice - listing.pricePerKg) / listing.mandiModalPrice) * 100;
+    return ((listing.mandiModalPrice - listing.pricePerDay) / listing.mandiModalPrice) * 100;
   }, [listing]);
+
+  const [now, setNow] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (!countdown) return;
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [countdown]);
+
+  const remainingHours = countdown ? Math.max(0, Math.round((countdown - now) / (1000 * 60 * 60))) : 0;
 
   if (!listing) return null;
 
@@ -64,20 +76,20 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
     if (!user?.id) return;
     const quantity = type === "sample" ? 1 : 100;
     const unit = "kg";
-    const baseAmount = listing.pricePerKg * quantity;
+    const baseAmount = listing.pricePerDay * quantity;
     const totalAmount = type === "sample" ? baseAmount + 30 : baseAmount;
     const result = await checkoutWithEscrow({
-      buyerId: user.id,
-      farmerId: listing.farmerId,
+      renterId: user.id,
+      ownerId: listing.farmerId,
       listingId: listing.id as Id<"listings">,
       type,
       quantity,
       unit,
       totalAmount,
-      description: `${type === "sample" ? "Sample" : "Bulk"} order for ${listing.cropName}`,
+      description: `${type === "sample" ? "Sample" : "Bulk"} order for ${listing.assetCategory}`,
       deliveryAddress: "Address captured at checkout",
       customer: {
-        name: user.fullName || "Buyer",
+        name: user.fullName || "Renter",
         email: user.primaryEmailAddress?.emailAddress,
       },
     });
@@ -87,24 +99,23 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
     }
   };
 
-  const remainingHours = countdown ? Math.max(0, Math.round((countdown - Date.now()) / (1000 * 60 * 60))) : 0;
-
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-2xl">
           <SheetHeader className="border-b p-6 text-left">
-            <SheetTitle>{listing.cropName}</SheetTitle>
+            <SheetTitle>{listing.assetCategory}</SheetTitle>
             <SheetDescription>{listing.location}</SheetDescription>
           </SheetHeader>
 
           <div className="space-y-5 p-6">
             <div className="relative h-56 overflow-hidden rounded-xl border">
-              <Image
-                src={listing.imageUrl || "/placeholder-farmer.png"}
-                alt={listing.cropName}
-                fill
-                className="object-cover"
+              <ListingMedia
+                imageUrl={listing.imageUrl}
+                alt={listing.assetCategory}
+                title={listing.assetCategory}
+                subtitle={listing.location}
+                sizes="(max-width: 768px) 100vw, 50vw"
               />
             </div>
 
@@ -116,7 +127,7 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
                   {listing.qualityScore ? <Badge>{listing.qualityScore} Grade</Badge> : null}
                 </div>
                 <p className="text-sm text-muted-foreground">{listing.description}</p>
-                <p className="text-2xl font-black text-primary">₹{listing.pricePerKg.toFixed(2)}/kg</p>
+                <p className="text-2xl font-black text-primary">₹{listing.pricePerDay?.toFixed(2) || '0.00'}/day</p>
                 <p className="text-sm text-muted-foreground">Available: {listing.quantity}</p>
               </CardContent>
             </Card>
@@ -133,7 +144,7 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
 
             <Card>
               <CardContent className="space-y-3 pt-5">
-                <p className="text-sm font-semibold">Farmer Profile</p>
+                <p className="text-sm font-semibold">Owner Profile</p>
                 <p className="text-sm text-muted-foreground">{listing.farmerName}</p>
                 <p className="text-xs text-muted-foreground">Distance: {listing.distanceKm.toFixed(1)} km</p>
               </CardContent>
@@ -150,7 +161,7 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
               <Card>
                 <CardContent className="space-y-2 pt-5">
                   <p className="text-sm text-muted-foreground">
-                    Payment auto-releases to farmer in approximately {remainingHours} hours.
+                    Payment auto-releases to owner in approximately {remainingHours} hours.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
@@ -188,9 +199,9 @@ export function ListingDetailSheet({ open, onOpenChange, listing }: ListingDetai
         open={chatOpen}
         onOpenChange={setChatOpen}
         listingId={listing.id as Id<"listings">}
-        listingName={listing.cropName}
-        farmerName={listing.farmerName}
-        senderId={user?.id || "buyer"}
+        listingName={listing.assetCategory}
+        ownerName={listing.farmerName}
+        senderId={user?.id || "renter"}
         receiverId={listing.farmerId}
       />
     </>
