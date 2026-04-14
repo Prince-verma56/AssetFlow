@@ -7,7 +7,7 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Sparkles } from "lucide-react";
-import { SlideTextButton } from "@/components/ui/SlideTextButton"; // Ensure this path is correct
+import { SlideTextButton } from "@/components/ui/SlideTextButton"; 
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -117,9 +117,9 @@ export function HeroSection() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, delay: 0.18 }}
-            className="mt-8 max-w-2xl text-lg leading-8 text-slate-600 md:text-xl"
+            className="mt-8 max-w-2xl text-lg leading-relaxed text-slate-600 md:text-xl font-medium"
           >
-            Connect with local owners to rent tractors, drones, and power tools. Maximize your asset's ROI or find exactly what you need with secure escrow payments and real-time Mapbox tracking.
+            Rent heavy equipment locally with secure escrow and real-time tracking. Maximize ROI for owners; find exactly what you need.
           </motion.p>
 
           <motion.div
@@ -128,8 +128,9 @@ export function HeroSection() {
             transition={{ duration: 0.65, delay: 0.28 }}
             className="mt-10 flex flex-wrap gap-4"
           >
-            <SlideTextButton href="/marketplace" label="Browse Equipment" />
-            <SlideTextButton href="/admin" label="List an Asset" variant="secondary" />
+            {/* Dono buttons ab onboarding par bhejenge */}
+            <SlideTextButton href="/onboarding" label="Browse Equipment" />
+            <SlideTextButton href="/onboarding" label="List an Asset" variant="secondary" />
           </motion.div>
         </div>
 

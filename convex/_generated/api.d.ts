@@ -17,6 +17,7 @@ import type * as listings from "../listings.js";
 import type * as marketSync from "../marketSync.js";
 import type * as messages from "../messages.js";
 import type * as orders from "../orders.js";
+import type * as ratings from "../ratings.js";
 import type * as savedOwners from "../savedOwners.js";
 import type * as users from "../users.js";
 import type * as wishlist from "../wishlist.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   marketSync: typeof marketSync;
   messages: typeof messages;
   orders: typeof orders;
+  ratings: typeof ratings;
   savedOwners: typeof savedOwners;
   users: typeof users;
   wishlist: typeof wishlist;

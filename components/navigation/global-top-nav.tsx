@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Heart, HelpCircle, MapPin, Settings, Tractor, Truck, UserRound } from "lucide-react";
 import { SignOutButton, useUser } from "@clerk/nextjs";
@@ -59,9 +60,14 @@ export function GlobalTopNav() {
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-3">
           <Link href={role === "owner" ? "/admin" : "/marketplace"} className="flex items-center gap-3">
-            <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <Tractor className="size-5" />
-            </span>
+            <Image 
+              src="/logo.svg" 
+              alt="AgriRent Logo" 
+              width={40} 
+              height={40} 
+              className="size-10 object-contain drop-shadow-sm" 
+              priority
+            />
             <div className="hidden sm:block">
               <p className="text-sm font-black tracking-tight">AgriRent</p>
               <p className="text-xs text-muted-foreground">Equipment rentals with live logistics</p>

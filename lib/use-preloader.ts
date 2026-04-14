@@ -8,7 +8,7 @@ interface PreloaderStore {
 }
 
 export const usePreloader = create<PreloaderStore>((set) => ({
-  isLoading: false,
+  isLoading: true, // Start true so it immediately shows on first page load
   runId: 0,
   startLoading: () => set((state) => ({ isLoading: true, runId: state.runId + 1 })),
   finishLoading: () => set({ isLoading: false }),

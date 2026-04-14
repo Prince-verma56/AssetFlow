@@ -59,6 +59,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
   const selectedDays = rentalStart && rentalEnd ? Math.max(1, differenceInCalendarDays(rentalEnd, rentalStart) + 1) : 0;
   const minDays = Math.max(1, listing?.minimumRentalDays ?? 1);
   const assetAge = listing?.assetAge ?? null;
+  const viewCount = listing?.viewCount ?? 0;
   const renterCompletedCount = React.useMemo(() => {
     return (renterOrders ?? []).filter((order) => {
       const status = String(order.orderStatus ?? "");
@@ -66,8 +67,8 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
     }).length;
   }, [renterOrders]);
   const pricing = React.useMemo(
-    () => calculateDynamicPrice(listing?.basePricePerDay ?? listing?.pricePerDay ?? 0, selectedDays || 1, assetAge, renterCompletedCount),
-    [assetAge, listing?.basePricePerDay, listing?.pricePerDay, renterCompletedCount, selectedDays],
+    () => calculateDynamicPrice(listing?.basePricePerDay ?? listing?.pricePerDay ?? 0, selectedDays || 1, assetAge, renterCompletedCount, viewCount),
+    [assetAge, listing?.basePricePerDay, listing?.pricePerDay, renterCompletedCount, selectedDays, viewCount],
   );
   const dynamicPriceApplied = pricing.durationDiscountRate + pricing.tenureDiscountRate + pricing.loyaltyDiscountRate;
   const isDurationValid = hasFullRange && selectedDays >= minDays;
@@ -226,9 +227,10 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl rounded-[2rem] border-zinc-200 bg-zinc-50 p-0 shadow-2xl">
-        <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-5 border-b border-zinc-200 bg-white p-6 lg:border-b-0 lg:border-r">
+      <DialogContent className="max-w-5xl w-[95vw] sm:max-w-5xl md:w-full max-h-[90vh] flex flex-col rounded-[2rem] border-zinc-200 bg-zinc-50 p-0 shadow-2xl overflow-hidden">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-5 border-b border-zinc-200 bg-white p-6 lg:border-b-0 lg:border-r">
             <DialogHeader className="space-y-2 text-left">
               <DialogTitle className="text-2xl font-black text-zinc-950">Confirm Your Rental</DialogTitle>
               <DialogDescription className="text-sm text-zinc-600">
@@ -379,6 +381,12 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
                   <span className="text-zinc-500">Base Amount</span>
                   <span className="font-medium">₹{pricing.baseAmount.toFixed(0)}</span>
                 </div>
+                {pricing.surgeAmount > 0 ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-amber-600">High Demand Surge (+15%)</span>
+                    <span className="font-semibold text-amber-600">+₹{pricing.surgeAmount.toFixed(0)}</span>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-zinc-500">Duration Discount</span>
                   <span className={pricing.durationDiscount > 0 ? "font-semibold text-zinc-900" : "text-zinc-400"}>
@@ -419,6 +427,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
               </Button>
             </div>
           </div>
+        </div>
         </div>
       </DialogContent>
     </Dialog>

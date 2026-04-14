@@ -36,4 +36,5 @@ export type MarketplaceListing = {
   totalRentals?: number;
   lifetimeRentals?: number;
   averageRating?: number;
+  viewCount?: number;
 };

@@ -1,5 +1,5 @@
-import { PriceAdvisorDashboard } from "@/components/admin/price-advisor-dashboard";
+import OwnerOraclePage from "@/components/admin/price-advisor-dashboard";
 
 export default function PriceAdvisorPage() {
-  return <PriceAdvisorDashboard />;
+  return <OwnerOraclePage />;
 }

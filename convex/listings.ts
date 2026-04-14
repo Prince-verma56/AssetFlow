@@ -100,11 +100,20 @@ async function getAvailabilitySnapshot(
     .filter((value): value is number => value !== null)
     .sort((a, b) => a - b)[0] ?? null;
 
+  const blockedDates = operationalOrders
+    .map((order) => {
+      const from = normalizeTimestamp(order.rentalStartDate);
+      const to = normalizeTimestamp(order.rentalEndDate);
+      return from && to ? { from, to } : null;
+    })
+    .filter((v): v is { from: number; to: number } => v !== null);
+
   return {
     stockQuantity,
     activeOrdersCount,
     availableStock,
     nearestEndDate,
+    blockedDates,
   };
 }
 
@@ -160,6 +169,7 @@ async function decorateListing(
     assetAge,
     lifetimeRentals: listing.lifetimeRentals ?? listing.totalRentals ?? 0,
     totalRentals: listing.totalRentals ?? listing.lifetimeRentals ?? 0,
+    viewCount: listing.viewCount ?? 0,
   };
 }
 

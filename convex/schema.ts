@@ -79,6 +79,8 @@ export default defineSchema({
     totalRentals: v.optional(v.number()), // Lifetime rental count for this asset (defaults to 0)
     lifetimeRentals: v.optional(v.number()),
     averageRating: v.optional(v.number()),
+    viewCount: v.optional(v.number()), // For demand-based surge pricing
+    purchasePrice: v.optional(v.number()), // Original purchase price for ROI calculation
   })
   .index("by_status", ["status"])
   .index("by_farmer", ["farmerId"])
@@ -190,6 +192,17 @@ export default defineSchema({
     .index("by_ownerId", ["ownerId"])
     .index("by_followerId_and_followingId", ["followerId", "followingId"])
     .index("by_followerId_and_ownerId", ["followerId", "ownerId"]),
+
+  ratings: defineTable({
+    listingId: v.id("listings"),
+    authorId: v.string(), // Clerk user ID of the rater
+    score: v.number(), // 1-5
+    comment: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_listingId", ["listingId"])
+    .index("by_authorId", ["authorId"])
+    .index("by_listingId_and_authorId", ["listingId", "authorId"]),
 
   messages: defineTable({
     listingId: v.id("listings"),

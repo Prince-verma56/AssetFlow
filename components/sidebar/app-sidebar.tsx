@@ -104,14 +104,14 @@ export function AppSidebar() {
     setTargetRole(nextConvexRole);
     setSwitchingRole(true);
     try {
-      // 1. Update Convex
+      // 1. Update Convex DB role
       const result = await toggleRole({
         clerkId: user.id,
         targetRole: nextConvexRole,
       });
       if (!result.success) throw new Error(result.error || "Role update failed");
 
-      // 2. Sync Clerk publicMetadata for proxy/session consistency
+      // 2. Sync Clerk publicMetadata via API route
       const response = await fetch("/api/me/role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -122,21 +122,20 @@ export function AppSidebar() {
         throw new Error("Failed to update role in Clerk");
       }
 
-      // 3. Wait for cookies to be set
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // 4. Update local state and navigate
+      // 3. Optimistically update local state
       setRole(nextConvexRole);
-      router.push(roleToDashboard(nextRole));
-      router.refresh();
 
-      // 5. Wait for navigation to complete
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // 4. Hard navigation ensures fresh session token is loaded with new role
+      const target = roleToDashboard(nextRole);
+      toast.success(`Switched to ${roleLabel(nextRole)} workspace`);
+      
+      // Small delay so the toast is visible before navigation
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      window.location.assign(target);
     } catch (error) {
       console.error("Role switch error:", error);
-      toast.error("Failed to switch role. Please try again.");
-    } finally {
       setSwitchingRole(false);
+      toast.error("Failed to switch role. Please try again.");
     }
   };
 

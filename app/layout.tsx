@@ -5,6 +5,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { resolveAppFonts } from "@/config/fonts.config";
 import { GlobalTopNav } from "@/components/navigation/global-top-nav";
+import { SmartPreloader } from "@/components/ui/preloader/SmartPreloader";
 import "./globals.css";
 
 import { ConvexClientProvider } from "@/components/convex-client-provider";
@@ -38,6 +39,7 @@ export default function RootLayout({
         <ConvexClientProvider>
           <LenisProvider>
             <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+              <SmartPreloader type="ui" />
               <GlobalTopNav />
               {children}
 

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
+import { useMutation } from "convex/react";
 import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import { roleLabel, roleToDashboard, type ClerkRole } from "@/lib/roles";
+import { api } from "@/convex/_generated/api";
+import { roleLabel, roleToDashboard, toConvexRole, type ClerkRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,8 +24,9 @@ type RoleSwitcherProps = {
 };
 
 export function RoleSwitcher({ role }: RoleSwitcherProps) {
-  const router = useRouter();
+  const { user } = useUser();
   const [switching, setSwitching] = useState(false);
+  const toggleRole = useMutation(api.users.toggleRole);
 
   const currentRole = role ?? "renter";
 
@@ -31,21 +34,31 @@ export function RoleSwitcher({ role }: RoleSwitcherProps) {
     if (switching || nextRole === currentRole) return;
     setSwitching(true);
     try {
+      // 1. Update Convex DB (keeps DB in sync with Clerk)
+      if (user?.id) {
+        await toggleRole({
+          clerkId: user.id,
+          targetRole: toConvexRole(nextRole),
+        });
+      }
+
+      // 2. Update Clerk publicMetadata via API route
       const response = await fetch("/api/me/role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: nextRole }),
       });
       if (!response.ok) throw new Error("Failed to switch role");
-      const payload = (await response.json()) as { redirectTo?: "/admin" | "/marketplace" };
+
       toast.success(`Switched to ${roleLabel(nextRole)} workspace`);
-      const target = payload.redirectTo ?? roleToDashboard(nextRole);
-      router.replace(target);
-      router.refresh();
+
+      // 3. Hard navigation ensures new session token with updated role
+      const target = roleToDashboard(nextRole);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      window.location.assign(target);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Role switch failed";
       toast.error(message);
-    } finally {
       setSwitching(false);
     }
   };
@@ -61,11 +74,19 @@ export function RoleSwitcher({ role }: RoleSwitcherProps) {
       <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuLabel>Switch Workspace</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => switchRole("owner")}>Owner</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => switchRole("renter")}>Renter</DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => void switchRole("owner")}
+          className={currentRole === "owner" ? "font-semibold" : ""}
+        >
+          Owner Dashboard
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => void switchRole("renter")}
+          className={currentRole === "renter" ? "font-semibold" : ""}
+        >
+          Renter Marketplace
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-
-

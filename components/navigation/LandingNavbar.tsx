@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { MapPin, Moon, Sun } from "lucide-react";
@@ -33,9 +34,14 @@ export function LandingNavbar() {
     <nav className="fixed top-0 z-40 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-xs font-bold tracking-tighter text-background">
-            AR
-          </div>
+          <Image 
+            src="/logo.svg" 
+            alt="AgriRent Logo" 
+            width={40} 
+            height={40} 
+            className="size-9 object-contain" 
+            priority
+          />
           <span className="text-xl font-bold tracking-tight text-foreground">AgriRent</span>
         </Link>
 
