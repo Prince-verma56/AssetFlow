@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -65,6 +66,7 @@ function calculateRentalDays(startDate?: string | number, endDate?: string | num
 export default function RenterHistoryPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useUser();
   const orderId = params.id as string;
 
   // Fetch order details
@@ -84,6 +86,21 @@ export default function RenterHistoryPage() {
         activeRentals: number;
         invoicesIssued: number;
       }
+    | undefined;
+  const listingHistory = useQuery(
+    api.orders.getRenterListingHistory,
+    user?.id && order?.listingId
+      ? { clerkId: user.id, listingId: order.listingId as Id<"listings"> }
+      : "skip"
+  ) as
+    | Array<{
+        _id: string;
+        startDate?: number | null;
+        endDate?: number | null;
+        totalAmount: number;
+        status: string;
+        createdAt: number;
+      }>
     | undefined;
 
   if (!order) {
@@ -347,6 +364,40 @@ export default function RenterHistoryPage() {
         </CardHeader>
         <CardContent>
           <RentalTimelineCards currentStep={order.orderStatus as RentalTimelineStep} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/40">
+        <CardHeader>
+          <CardTitle>Usage History</CardTitle>
+          <CardDescription>Every time you have booked this same equipment.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {listingHistory && listingHistory.length > 0 ? (
+            listingHistory.map((entry) => (
+              <div key={entry._id} className="rounded-xl border border-border/50 bg-muted/20 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold">
+                      {entry.startDate ? format(new Date(entry.startDate), "dd MMM yyyy") : "Start pending"} to{" "}
+                      {entry.endDate ? format(new Date(entry.endDate), "dd MMM yyyy") : "End pending"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Logged on {format(new Date(entry.createdAt), "dd MMM yyyy")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={getStatusVariant(entry.status)}>{formatStatus(entry.status)}</Badge>
+                    <span className="text-sm font-semibold">₹{entry.totalAmount.toLocaleString("en-IN")}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
+              This is your first recorded rental cycle for this equipment.
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -51,7 +51,9 @@ export default defineSchema({
     subCategoryId: v.optional(v.string()),
     description: v.string(),
     pricePerDay: v.number(),
+    basePricePerDay: v.optional(v.number()),
     quantity: v.string(),
+    stockCount: v.optional(v.number()),
     stockQuantity: v.optional(v.number()),
     minimumRentalDays: v.optional(v.number()),
     purchaseYear: v.optional(v.number()),
@@ -92,12 +94,15 @@ export default defineSchema({
     buyerId: v.union(v.id("users"), v.string()),
     farmerId: v.union(v.id("users"), v.string()),
     totalAmount: v.number(),
+    dynamicTotal: v.optional(v.number()),
     type: v.optional(v.union(v.literal("sample"), v.literal("bulk"))),
     quantity: v.optional(v.number()),
     unit: v.optional(v.string()),
     status: v.optional(
       v.union(
         v.literal("pending"),
+        v.literal("active"),
+        v.literal("completed"),
         v.literal("escrow"),
         v.literal("shipped"),
         v.literal("delivered"),
@@ -107,6 +112,8 @@ export default defineSchema({
     ),
     escrowReleaseAt: v.optional(v.number()),
     buyerConfirmed: v.optional(v.boolean()),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
     rentalStartDate: v.optional(v.union(v.string(), v.number())),
     rentalEndDate: v.optional(v.union(v.string(), v.number())),
     insuranceSelected: v.optional(v.boolean()),
@@ -175,11 +182,13 @@ export default defineSchema({
 
   follows: defineTable({
     followerId: v.string(),
+    followingId: v.optional(v.string()),
     ownerId: v.string(),
     createdAt: v.number(),
   })
     .index("by_followerId", ["followerId"])
     .index("by_ownerId", ["ownerId"])
+    .index("by_followerId_and_followingId", ["followerId", "followingId"])
     .index("by_followerId_and_ownerId", ["followerId", "ownerId"]),
 
   messages: defineTable({

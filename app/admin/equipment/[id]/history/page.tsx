@@ -35,6 +35,7 @@ type HistoryRow = {
   paymentId?: string;
   invoiceUrl?: string;
   dynamicPriceApplied?: number;
+  dynamicTotal?: number;
   createdAt?: number;
 };
 
@@ -97,6 +98,11 @@ export default function AssetLedgerPage() {
   const uniqueRenters = React.useMemo(() => {
     return new Set((history ?? []).map((row) => row.renterEmail || row.renterName)).size;
   }, [history]);
+  const inferredRecoveryRate = React.useMemo(() => {
+    if (!listing || !stats) return null;
+    const baseline = Math.max((listing.totalRentals ?? 1) * 1_000, 1);
+    return stats.lifetimeEarnings / baseline;
+  }, [listing, stats]);
 
   React.useEffect(() => {
     if (!history || history.length === 0) return;
@@ -187,6 +193,12 @@ export default function AssetLedgerPage() {
           helper="Gross rental revenue from this asset"
         />
         <MetricCard icon={UserRound} label="Unique renters" value={uniqueRenters} helper="Distinct customers who rented this product" />
+        <MetricCard
+          icon={TrendingUp}
+          label="Lifetime ROI"
+          value={inferredRecoveryRate ? `${Math.round(inferredRecoveryRate * 100)}%` : "Pending"}
+          helper="Revenue recovery estimate until purchase cost is added"
+        />
       </div>
 
       {aiInsight ? <AiMarketBrief insight={aiInsight} variant="owner" /> : null}
@@ -272,7 +284,7 @@ export default function AssetLedgerPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <p className="font-black text-emerald-700">₹{row.totalAmount.toLocaleString("en-IN")}</p>
+                        <p className="font-black text-zinc-900">₹{(row.dynamicTotal ?? row.totalAmount).toLocaleString("en-IN")}</p>
                       </TableCell>
                     </TableRow>
                   ))

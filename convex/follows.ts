@@ -42,6 +42,7 @@ export const toggleFollow = mutation({
 
     await ctx.db.insert("follows", {
       followerId: args.followerId,
+      followingId: args.ownerId,
       ownerId: args.ownerId,
       createdAt: Date.now(),
     });

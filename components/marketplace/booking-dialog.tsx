@@ -12,6 +12,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { useRazorpay } from "@/hooks/use-razorpay";
 import { buildInvoiceUrl } from "@/lib/invoices";
+import { calculateDynamicPrice } from "@/lib/rental-pricing";
 import { processOrderCommunication } from "@/app/actions/order-communication";
 import type { MarketplaceListing } from "./listing-types";
 import { Button } from "@/components/ui/button";
@@ -29,24 +30,12 @@ type BookingDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-function getDurationDiscountRate(days: number) {
-  if (days >= 15) return 0.2;
-  if (days >= 7) return 0.1;
-  return 0;
-}
-
-function getTenureDiscountRate(assetAge: number | null | undefined) {
-  if (!assetAge) return 0;
-  if (assetAge >= 6) return 0.15;
-  if (assetAge >= 3) return 0.05;
-  return 0;
-}
-
 export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProps) {
   const router = useRouter();
   const { user } = useUser();
   const { checkoutWithEscrow, isProcessing } = useRazorpay();
   const attachInvoiceUrl = useMutation(api.orders.attachInvoiceUrl);
+  const renterOrders = useQuery(api.orders.getRenterOrdersDetailed, user?.id ? { clerkId: user.id } : "skip");
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
     from: new Date(),
     to: addDays(new Date(), 2),
@@ -64,39 +53,43 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
     }
   }, [open]);
 
-  const rentalStart = dateRange?.from ?? new Date();
-  const rentalEnd = dateRange?.to ?? rentalStart;
-  const selectedDays = Math.max(1, differenceInCalendarDays(rentalEnd, rentalStart) + 1);
+  const rentalStart = dateRange?.from;
+  const rentalEnd = dateRange?.to;
+  const hasFullRange = Boolean(rentalStart && rentalEnd);
+  const selectedDays = rentalStart && rentalEnd ? Math.max(1, differenceInCalendarDays(rentalEnd, rentalStart) + 1) : 0;
   const minDays = Math.max(1, listing?.minimumRentalDays ?? 1);
   const assetAge = listing?.assetAge ?? null;
-  const baseTotal = (listing?.pricePerDay ?? 0) * selectedDays;
-  const durationDiscountRate = getDurationDiscountRate(selectedDays);
-  const tenureDiscountRate = getTenureDiscountRate(assetAge);
-  const durationDiscount = baseTotal * durationDiscountRate;
-  const tenureDiscount = Math.max(0, (baseTotal - durationDiscount) * tenureDiscountRate);
-  const escrowFee = Math.max(49, Math.round(baseTotal * 0.025));
-  const total = Math.max(0, baseTotal - durationDiscount - tenureDiscount + escrowFee);
-  const dynamicPriceApplied = durationDiscountRate + tenureDiscountRate;
-  const isDurationValid = selectedDays >= minDays;
+  const renterCompletedCount = React.useMemo(() => {
+    return (renterOrders ?? []).filter((order) => {
+      const status = String(order.orderStatus ?? "");
+      return status === "completed" || status === "delivered";
+    }).length;
+  }, [renterOrders]);
+  const pricing = React.useMemo(
+    () => calculateDynamicPrice(listing?.basePricePerDay ?? listing?.pricePerDay ?? 0, selectedDays || 1, assetAge, renterCompletedCount),
+    [assetAge, listing?.basePricePerDay, listing?.pricePerDay, renterCompletedCount, selectedDays],
+  );
+  const dynamicPriceApplied = pricing.durationDiscountRate + pricing.tenureDiscountRate + pricing.loyaltyDiscountRate;
+  const isDurationValid = hasFullRange && selectedDays >= minDays;
 
   const availability = useQuery(
     api.listings.getBookingAvailability,
     listing
       ? {
           listingId: listing._id as Id<"listings">,
-          startDate: rentalStart.getTime(),
-          endDate: rentalEnd.getTime(),
+          startDate: rentalStart?.getTime(),
+          endDate: rentalEnd?.getTime(),
         }
       : "skip",
   );
 
   const availableStock = availability?.success
     ? availability.data.availableStock
-    : listing?.availableStock ?? listing?.stockQuantity ?? 1;
+    : listing?.availableStock ?? listing?.stockCount ?? listing?.stockQuantity ?? 1;
   const isStockAvailable = availableStock > 0;
 
   React.useEffect(() => {
-    if (!listing || !dateRange?.from || !dateRange?.to) return;
+    if (!listing || !rentalStart || !rentalEnd) return;
 
     const generatePricingInsight = async () => {
       setIsLoadingAi(true);
@@ -108,11 +101,11 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
             type: "renter",
             assetName: listing.title || listing.assetCategory,
             days: selectedDays,
-            dynamicDiscount: durationDiscountRate,
-            tenureDiscount: tenureDiscountRate,
+            dynamicDiscount: pricing.durationDiscountRate + pricing.loyaltyDiscountRate,
+            tenureDiscount: pricing.tenureDiscountRate,
             assetAge,
-            escrowFee,
-            totalAmount: total,
+            escrowFee: 0,
+            totalAmount: pricing.finalTotal,
           }),
         });
 
@@ -128,13 +121,28 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
     };
 
     void generatePricingInsight();
-  }, [assetAge, dateRange, durationDiscountRate, escrowFee, listing, selectedDays, tenureDiscountRate, total]);
+  }, [
+    assetAge,
+    listing,
+    pricing.durationDiscountRate,
+    pricing.finalTotal,
+    pricing.loyaltyDiscountRate,
+    pricing.tenureDiscountRate,
+    rentalEnd,
+    rentalStart,
+    selectedDays,
+  ]);
 
   if (!listing) return null;
 
   const handleCheckout = async () => {
     if (!user?.id || !user.primaryEmailAddress?.emailAddress) {
       toast.error("Please sign in before booking.");
+      return;
+    }
+
+    if (!rentalStart || !rentalEnd) {
+      toast.error("Please select a full rental date range.");
       return;
     }
 
@@ -156,7 +164,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
         type: "bulk",
         quantity: selectedDays,
         unit: "days",
-        totalAmount: total,
+        totalAmount: pricing.finalTotal,
         description: `Rental for ${listing.title || listing.assetCategory}`,
         deliveryAddress: listing.location,
         customer: {
@@ -164,6 +172,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
           email: user.primaryEmailAddress.emailAddress,
         },
         dynamicPriceApplied,
+        dynamicTotal: pricing.finalTotal,
         rentalStartDate: rentalStart.getTime(),
         rentalEndDate: rentalEnd.getTime(),
       });
@@ -174,7 +183,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
         itemName: listing.title || listing.assetCategory,
         rentalStart: rentalStart.toISOString(),
         rentalEnd: rentalEnd.toISOString(),
-        totalAmount: total,
+        totalAmount: pricing.finalTotal,
       });
 
       await attachInvoiceUrl({
@@ -188,12 +197,12 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
         ownerEmail: listing.ownerEmail || process.env.NEXT_PUBLIC_DEFAULT_OWNER_EMAIL || user.primaryEmailAddress.emailAddress,
         ownerName: listing.ownerName || "Equipment Owner",
         assetCategory: listing.title || listing.assetCategory,
-        amount: total,
+        amount: pricing.finalTotal,
         orderId,
         paymentId: String(result.data.paymentId),
         gatewayOrderId: "-",
         quantity: `${selectedDays} days`,
-        unitPricePerKg: listing.pricePerDay,
+        unitPricePerKg: listing.basePricePerDay ?? listing.pricePerDay,
         unitLabel: "day",
         sourceLocation: listing.location,
         deliveryAddress: {
@@ -217,13 +226,13 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl rounded-[2rem] border-zinc-200 bg-[#f6f5f1] p-0 shadow-2xl">
+      <DialogContent className="max-w-5xl rounded-[2rem] border-zinc-200 bg-zinc-50 p-0 shadow-2xl">
         <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-5 border-b border-zinc-200 bg-white p-6 lg:border-b-0 lg:border-r">
             <DialogHeader className="space-y-2 text-left">
               <DialogTitle className="text-2xl font-black text-zinc-950">Confirm Your Rental</DialogTitle>
               <DialogDescription className="text-sm text-zinc-600">
-                Review product trust, owner reliability, and the booking window before secure payment.
+                Review the booking window, neutral pricing summary, and owner trust before payment.
               </DialogDescription>
             </DialogHeader>
 
@@ -243,15 +252,15 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
                     <p className="text-lg font-black text-zinc-950">{listing.title || listing.assetCategory}</p>
                     <p className="text-sm text-zinc-500">{listing.location}</p>
                   </div>
-                  <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                    ₹{listing.pricePerDay.toFixed(0)}/day
+                  <Badge className="bg-zinc-900 text-white hover:bg-zinc-900">
+                    ₹{(listing.basePricePerDay ?? listing.pricePerDay).toFixed(0)}/day
                   </Badge>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded-2xl border border-zinc-200 bg-white p-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Product Score</p>
                     <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-zinc-900">
-                      <Star className="size-4 text-amber-500" />
+                      <Star className="size-4 text-zinc-700" />
                       Successfully rented {listing.totalRentals ?? listing.lifetimeRentals ?? 0} times
                     </p>
                   </div>
@@ -265,7 +274,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
               </div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-zinc-200 bg-[#f8f7f4] p-4">
+            <div className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Owner Trust</p>
@@ -283,7 +292,7 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
 
             {aiInsight && !isLoadingAi ? <AiMarketBrief insight={aiInsight} variant="renter" /> : null}
             {isLoadingAi ? (
-              <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+              <div className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-700">
                 <Sparkles className="size-4 animate-pulse" />
                 Generating the smart pricing summary...
               </div>
@@ -331,20 +340,22 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
               <div className="rounded-2xl border border-zinc-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Availability</p>
                 <p className="mt-2 text-lg font-black text-zinc-950">
-                  {isStockAvailable ? `${availableStock} unit${availableStock === 1 ? "" : "s"} open` : "Sold out"}
+                  {isStockAvailable ? `${availableStock} unit${availableStock === 1 ? "" : "s"} open` : "Already booked"}
                 </p>
                 <p className="mt-1 text-sm text-zinc-600">
                   {isStockAvailable
                     ? "Your selected dates still have available inventory."
-                    : listing.nearestEndDate
-                      ? `Available again around ${format(new Date(listing.nearestEndDate), "dd MMM yyyy")}.`
-                      : "Try a different date range."}
+                    : availability?.success && availability.data.nearestEndDate
+                      ? `Already Booked: Available on ${format(new Date(availability.data.nearestEndDate), "dd MMM yyyy")}.`
+                      : listing.nearestEndDate
+                        ? `Already Booked: Available on ${format(new Date(listing.nearestEndDate), "dd MMM yyyy")}.`
+                        : "Try a different date range."}
                 </p>
               </div>
               <div className="rounded-2xl border border-zinc-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Escrow Protection</p>
                 <p className="mt-2 flex items-center gap-2 text-lg font-black text-zinc-950">
-                  <ShieldCheck className="size-5 text-emerald-600" />
+                  <ShieldCheck className="size-5 text-zinc-700" />
                   Funds held safely
                 </p>
                 <p className="mt-1 text-sm text-zinc-600">
@@ -354,32 +365,42 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
             </div>
 
             <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-5">
-              <p className="text-sm font-semibold text-zinc-800">Price Breakdown</p>
+              <p className="text-sm font-semibold text-zinc-800">Pre-Transaction Receipt</p>
               <div className="mt-4 space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Base Rate</span>
-                  <span className="font-medium">₹{listing.pricePerDay.toFixed(0)} x {selectedDays} days = ₹{baseTotal.toFixed(0)}</span>
+                  <span className="text-zinc-500">Dates</span>
+                  <span className="font-medium text-zinc-900">
+                    {hasFullRange && rentalStart && rentalEnd
+                      ? `${format(rentalStart, "dd MMM")} - ${format(rentalEnd, "dd MMM")} (${selectedDays} Days)`
+                      : "Select a full date range"}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Long-Term Discount</span>
-                  <span className={durationDiscount > 0 ? "font-semibold text-emerald-700" : "text-zinc-400"}>
-                    {durationDiscount > 0 ? `-₹${durationDiscount.toFixed(0)}` : "Not applied"}
+                  <span className="text-zinc-500">Base Amount</span>
+                  <span className="font-medium">₹{pricing.baseAmount.toFixed(0)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-500">Duration Discount</span>
+                  <span className={pricing.durationDiscount > 0 ? "font-semibold text-zinc-900" : "text-zinc-400"}>
+                    {pricing.durationDiscount > 0 ? `-₹${pricing.durationDiscount.toFixed(0)}` : "Not applied"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-zinc-500">Age / Tenure Discount</span>
-                  <span className={tenureDiscount > 0 ? "font-semibold text-emerald-700" : "text-zinc-400"}>
-                    {tenureDiscount > 0 ? `-₹${tenureDiscount.toFixed(0)}` : "Not applied"}
+                  <span className={pricing.tenureDiscount > 0 ? "font-semibold text-zinc-900" : "text-zinc-400"}>
+                    {pricing.tenureDiscount > 0 ? `-₹${pricing.tenureDiscount.toFixed(0)}` : "Not applied"}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Escrow Fee</span>
-                  <span className="font-medium">₹{escrowFee.toFixed(0)}</span>
-                </div>
+                {pricing.loyaltyDiscount > 0 ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-zinc-500">Loyalty Discount</span>
+                    <span className="font-semibold text-zinc-900">-₹{pricing.loyaltyDiscount.toFixed(0)}</span>
+                  </div>
+                ) : null}
                 <div className="border-t border-zinc-200 pt-3">
                   <div className="flex items-center justify-between text-base font-black text-zinc-950">
-                    <span>Final Escrow Total</span>
-                    <span>₹{total.toFixed(0)}</span>
+                    <span>Final Total</span>
+                    <span>₹{pricing.finalTotal.toFixed(0)}</span>
                   </div>
                 </div>
               </div>
@@ -390,8 +411,8 @@ export function BookingDialog({ listing, open, onOpenChange }: BookingDialogProp
                 Cancel
               </Button>
               <Button
-                className="h-12 flex-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
-                disabled={!isDurationValid || !isStockAvailable || isProcessing}
+                className="h-12 flex-1 rounded-xl bg-zinc-900 text-white hover:bg-zinc-800"
+                disabled={!hasFullRange || !isDurationValid || !isStockAvailable || isProcessing}
                 onClick={() => void handleCheckout()}
               >
                 Proceed to Secure Payment

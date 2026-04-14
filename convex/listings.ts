@@ -32,6 +32,10 @@ function normalizeTimestamp(value: string | number | undefined | null) {
 }
 
 function getStockQuantity(listing: Doc<"listings">) {
+  if (typeof listing.stockCount === "number" && listing.stockCount > 0) {
+    return listing.stockCount;
+  }
+
   if (typeof listing.stockQuantity === "number" && listing.stockQuantity > 0) {
     return listing.stockQuantity;
   }
@@ -137,6 +141,8 @@ async function decorateListing(
   return {
     ...listing,
     quantity: listing.quantity ?? `${availability.stockQuantity} Units`,
+    basePricePerDay: listing.basePricePerDay ?? listing.pricePerDay,
+    stockCount: availability.stockQuantity,
     stockQuantity: availability.stockQuantity,
     availableStock: availability.availableStock,
     activeOrdersCount: availability.activeOrdersCount,
@@ -150,6 +156,7 @@ async function decorateListing(
     ownerTrustScore: deriveTrustScore(resolvedOwner),
     ownerFollowerCount: resolvedOwner?.followerCount ?? 0,
     ownerLifetimeCompletedOrders: resolvedOwner?.lifetimeCompletedOrders ?? 0,
+    ownerBadge: deriveOwnerBadge(resolvedOwner, [listing]),
     assetAge,
     lifetimeRentals: listing.lifetimeRentals ?? listing.totalRentals ?? 0,
     totalRentals: listing.totalRentals ?? listing.lifetimeRentals ?? 0,
@@ -389,6 +396,8 @@ export const createListing = mutation({
     description: v.string(),
     pricePerDay: v.number(),
     quantity: v.string(),
+    basePricePerDay: v.optional(v.number()),
+    stockCount: v.optional(v.number()),
     stockQuantity: v.optional(v.number()),
     minimumRentalDays: v.optional(v.number()),
     purchaseYear: v.optional(v.number()),
@@ -407,7 +416,7 @@ export const createListing = mutation({
     if (!user) throw new Error("User record not found. Cannot create listing.");
 
     const parsedQuantity = Number.parseInt(args.quantity.replace(/[^\d]/g, ""), 10);
-    const stockQuantity = Math.max(1, (args.stockQuantity ?? parsedQuantity) || 1);
+    const stockQuantity = Math.max(1, (args.stockCount ?? args.stockQuantity ?? parsedQuantity) || 1);
     const currentYear = new Date().getFullYear();
 
     return await ctx.db.insert("listings", {
@@ -418,7 +427,9 @@ export const createListing = mutation({
       subCategoryId: args.subCategoryId,
       description: args.description,
       pricePerDay: args.pricePerDay,
+      basePricePerDay: args.basePricePerDay ?? args.pricePerDay,
       quantity: args.quantity,
+      stockCount: stockQuantity,
       stockQuantity,
       minimumRentalDays: args.minimumRentalDays,
       purchaseYear:
@@ -445,14 +456,21 @@ export const updateListing = mutation({
     listingId: v.id("listings"),
     description: v.optional(v.string()),
     pricePerDay: v.optional(v.number()),
+    basePricePerDay: v.optional(v.number()),
     quantity: v.optional(v.string()),
+    stockCount: v.optional(v.number()),
     stockQuantity: v.optional(v.number()),
     purchaseYear: v.optional(v.number()),
     status: v.optional(v.union(v.literal("available"), v.literal("maintenance"), v.literal("sold"))),
   },
   handler: async (ctx, args) => {
     const { listingId, ...updates } = args;
-    await ctx.db.patch(listingId, updates);
+    const normalizedUpdates = {
+      ...updates,
+      basePricePerDay: updates.basePricePerDay ?? updates.pricePerDay,
+      stockCount: updates.stockCount ?? updates.stockQuantity,
+    };
+    await ctx.db.patch(listingId, normalizedUpdates);
   },
 });
 

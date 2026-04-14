@@ -7,7 +7,9 @@ export type MarketplaceListing = {
   subCategoryId?: string;
   description: string;
   pricePerDay: number;
+  basePricePerDay?: number;
   quantity: string;
+  stockCount?: number;
   minimumRentalDays?: number;
   condition?: "Like New" | "Excellent" | "Good" | "Fair";
   location: string;
@@ -21,6 +23,7 @@ export type MarketplaceListing = {
   ownerTrustScore?: number;
   ownerFollowerCount?: number;
   ownerLifetimeCompletedOrders?: number;
+  ownerBadge?: string;
   oraclePrice?: number;
   oracleConfidence?: number;
   qualityScore?: string;

@@ -17,6 +17,17 @@ function createTrackingEvent(status: string, description: string, timestamp = Da
   };
 }
 
+function normalizeTimestamp(value: string | number | undefined | null) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return asNumber;
+  }
+  return null;
+}
+
 function initialTrackingTimeline() {
   return [
     createTrackingEvent(
@@ -105,7 +116,7 @@ async function syncListingAvailability(ctx: MutationCtx, listingId: Id<"listings
 
   await ctx.db.patch(listingId, {
     nextAvailableDate,
-    status: activeOrders.length >= Math.max(1, listing.stockQuantity ?? 1) ? "sold" : "available",
+    status: activeOrders.length >= Math.max(1, listing.stockCount ?? listing.stockQuantity ?? 1) ? "sold" : "available",
   });
 }
 
@@ -162,6 +173,7 @@ export const createOrder = mutation({
     longitude: v.optional(v.number()),
     invoiceUrl: v.optional(v.string()),
     dynamicPriceApplied: v.optional(v.number()),
+    dynamicTotal: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (args.buyerId && args.farmerId && typeof args.quantity === "number" && args.unit && args.type) {
@@ -175,20 +187,23 @@ export const createOrder = mutation({
         razorpayPaymentId: args.razorpayPaymentId ?? args.paymentId,
         razorpayOrderId: args.razorpayOrderId,
         invoiceUrl: args.invoiceUrl,
-        status: "escrow",
         type: args.type,
         quantity: args.quantity,
         unit: args.unit,
         buyerConfirmed: false,
+        startDate: normalizeTimestamp(args.rentalStartDate) ?? undefined,
+        endDate: normalizeTimestamp(args.rentalEndDate) ?? undefined,
         rentalStartDate: args.rentalStartDate,
         rentalEndDate: args.rentalEndDate,
         insuranceSelected: args.insuranceSelected,
         dynamicPriceApplied: args.dynamicPriceApplied,
+        dynamicTotal: args.dynamicTotal ?? args.totalAmount,
         escrowReleaseAt: Date.now() + 72 * 60 * 60 * 1000,
         deliveryAddress: args.deliveryAddress,
         createdAt: Date.now(),
         orderStatus: "placed",
         trackingTimeline: initialTrackingTimeline(),
+        status: "active",
       });
 
       await syncListingAvailability(ctx, args.listingId);
@@ -216,7 +231,7 @@ export const createOrder = mutation({
         ? args.quantity
         : Number.parseFloat(String(args.quantity).replace(/[^\d.]/g, "")) || 0;
 
-    const orderId = await ctx.db.insert("orders", {
+      const orderId = await ctx.db.insert("orders", {
       listingId: listing._id,
       buyerId: buyer._id,
       farmerId: listing.farmerId,
@@ -227,21 +242,24 @@ export const createOrder = mutation({
       razorpayOrderId: args.razorpayOrderId,
       invoiceUrl: args.invoiceUrl,
       orderStatus: "placed",
-      status: "escrow",
       type: "bulk",
       quantity: parsedQuantity,
       unit: args.unit || "days",
       buyerConfirmed: false,
+      startDate: normalizeTimestamp(args.rentalStartDate) ?? undefined,
+      endDate: normalizeTimestamp(args.rentalEndDate) ?? undefined,
       rentalStartDate: args.rentalStartDate,
       rentalEndDate: args.rentalEndDate,
       insuranceSelected: args.insuranceSelected,
       dynamicPriceApplied: args.dynamicPriceApplied,
+      dynamicTotal: args.dynamicTotal ?? args.totalAmount,
       escrowReleaseAt: Date.now() + 72 * 60 * 60 * 1000,
       createdAt: Date.now(),
       deliveryAddress: args.deliveryAddress,
       latitude: args.latitude,
       longitude: args.longitude,
       trackingTimeline: initialTrackingTimeline(),
+      status: "active",
     });
 
     await syncListingAvailability(ctx, listing._id);
@@ -892,16 +910,17 @@ export const getAssetHistory = query({
         renterEmail: renter?.email ?? "-",
         renterPhone: renter?.phone ?? renter?.phoneNumber ?? "-",
         renterAvatar: renter?.avatarUrl ?? renter?.imageUrl,
-        startDate: order.rentalStartDate,
-        endDate: order.rentalEndDate,
+        startDate: order.startDate ?? order.rentalStartDate,
+        endDate: order.endDate ?? order.rentalEndDate,
         status: order.orderStatus ?? "pending",
-        totalAmount: order.totalAmount,
+        totalAmount: order.dynamicTotal ?? order.totalAmount,
         paymentStatus: order.paymentStatus,
         paymentId: order.paymentId,
         razorpayPaymentId: order.razorpayPaymentId,
         razorpayOrderId: order.razorpayOrderId,
         invoiceUrl: order.invoiceUrl,
         dynamicPriceApplied: order.dynamicPriceApplied ?? 0,
+        dynamicTotal: order.dynamicTotal ?? order.totalAmount,
         createdAt: order.createdAt,
       });
     }
@@ -927,7 +946,7 @@ export const getRentalStats = query({
     );
 
     const totalRentals = completedOrders.length;
-    const lifetimeEarnings = completedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const lifetimeEarnings = completedOrders.reduce((sum, order) => sum + (order.dynamicTotal ?? order.totalAmount), 0);
     const activeRentals = completedOrders.filter((order) =>
       order.orderStatus === "placed" ||
       order.orderStatus === "shipped" ||
@@ -942,5 +961,42 @@ export const getRentalStats = query({
       activeRentals,
       invoicesIssued,
     };
+  },
+});
+
+export const getRenterListingHistory = query({
+  args: {
+    clerkId: v.string(),
+    listingId: v.id("listings"),
+  },
+  handler: async (ctx, args) => {
+    const renter = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+
+    if (!renter) return [];
+
+    const ordersById = await ctx.db
+      .query("orders")
+      .withIndex("by_buyer", (q) => q.eq("buyerId", renter._id))
+      .order("desc")
+      .take(200);
+    const ordersByClerk = await ctx.db
+      .query("orders")
+      .withIndex("by_buyer", (q) => q.eq("buyerId", args.clerkId))
+      .order("desc")
+      .take(200);
+
+    return dedupeOrders([...ordersById, ...ordersByClerk])
+      .filter((order) => order.listingId === args.listingId)
+      .map((order) => ({
+        _id: order._id,
+        startDate: order.startDate ?? normalizeTimestamp(order.rentalStartDate),
+        endDate: order.endDate ?? normalizeTimestamp(order.rentalEndDate),
+        totalAmount: order.dynamicTotal ?? order.totalAmount,
+        status: order.orderStatus ?? order.status ?? "pending",
+        createdAt: order.createdAt ?? order._creationTime,
+      }));
   },
 });

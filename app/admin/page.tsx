@@ -43,6 +43,7 @@ export default function AdminPage() {
   const router = useRouter();
   const { user } = useUser();
   const [days, setDays] = React.useState<number>(30);
+  const [aiBrief, setAiBrief] = React.useState<string | null>(null);
   const dashboard = useQuery(api.listings.getOwnerDashboard, user?.id ? { clerkId: user.id, days } : "skip");
   const updateListing = useMutation(api.listings.updateListing);
   const deleteListing = useMutation(api.listings.deleteListing);
@@ -107,6 +108,37 @@ export default function AdminPage() {
     [router]
   );
 
+  React.useEffect(() => {
+    if (!dashboard?.success || dashboard.data.rows.length === 0) return;
+
+    const generateBrief = async () => {
+      try {
+        const hottestAsset = [...dashboard.data.rows].sort((a, b) => b.totalEarned - a.totalEarned)[0];
+        const response = await fetch("/api/ai/market-intelligence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "owner",
+            assetName: hottestAsset.assetName,
+            rentalCount: dashboard.data.metrics.currentlyRentedOut,
+            lifetimeEarnings: dashboard.data.metrics.totalEarnings,
+            recentRentals: dashboard.data.rows.slice(0, 4).map((row) => ({
+              renterName: row.currentRenter,
+              duration: 3,
+            })),
+          }),
+        });
+
+        const data = await response.json();
+        setAiBrief(data.insight ?? null);
+      } catch (error) {
+        console.error("Failed to generate owner smart brief:", error);
+      }
+    };
+
+    void generateBrief();
+  }, [dashboard]);
+
   if (!dashboard) return null;
 
   if (!dashboard.success) {
@@ -162,6 +194,18 @@ export default function AdminPage() {
           detail="Respond within 24h"
         />
       </div>
+
+      {aiBrief ? (
+        <Card className="border-border/70 bg-card/80">
+          <CardHeader>
+            <CardTitle>Smart Brief</CardTitle>
+            <CardDescription>AI demand and pricing guidance based on live owner activity.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-7 text-muted-foreground">{aiBrief}</p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <IdleAssetCalculator />
 

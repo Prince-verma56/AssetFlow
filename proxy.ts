@@ -2,7 +2,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { normalizeRole, roleToDashboard } from "@/lib/roles";
 
-const PUBLIC_ROUTES = new Set<string>(["/", "/sign-in", "/sign-up", "/role-redirect"]);
+const PUBLIC_ROUTES = new Set<string>(["/", "/sign-in", "/sign-up", "/role-redirect", "/onboarding"]);
 
 function getRoleFromClaims(sessionClaims: unknown) {
   if (!sessionClaims || typeof sessionClaims !== "object") return null;
@@ -27,7 +27,7 @@ function getRoleFromClaims(sessionClaims: unknown) {
 }
 
 function isRoleNeutralRoute(pathname: string) {
-  return ["/role-redirect", "/role-switching"].some(
+  return ["/onboarding", "/role-redirect", "/role-switching"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 }
@@ -88,18 +88,13 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  // Allow the landing page to act as the role selection screen.
-  if (!role && pathname === "/") {
+  // Allow the landing and onboarding pages while role is still being chosen.
+  if (!role && (pathname === "/" || pathname === "/onboarding")) {
     return NextResponse.next();
   }
 
   if (!role && !isRoleNeutralRoute(pathname) && !isApiRoute) {
     return NextResponse.redirect(new URL("/", req.url));
-  }
-
-  // If role exists and on neutral route, redirect to dashboard
-  if (role && isRoleNeutralRoute(pathname)) {
-    return NextResponse.redirect(new URL(roleToDashboard(role), req.url));
   }
 
   // Cross-role access prevention (unless role switching)
