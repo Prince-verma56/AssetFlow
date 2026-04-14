@@ -1,5 +1,8 @@
 import { LandingNavbar } from "@/components/navigation/LandingNavbar";
+
 import { HeroSection } from "@/components/sections/HeroSection";
+import HowItWorksSection from "@/components/sections/HowItWorksSection";
+import WhatWeProvideSection from "@/components/sections/WhatWeProvideSection";
 
 const placeholderClassName =
   "flex min-h-screen items-center justify-center px-6 py-24 text-center text-3xl font-black tracking-tight text-slate-300";
@@ -14,11 +17,11 @@ export default function HomePage() {
       </section>
 
       <section id="provide" className={placeholderClassName}>
-        <div>{/* <WhatWeProvideSection /> */}What We Provide</div>
+        <WhatWeProvideSection />
       </section>
 
       <section id="how-it-works" className={`${placeholderClassName} bg-muted/30`}>
-        <div>{/* <HowItWorksSection /> */}How It Works</div>
+        <HowItWorksSection />
       </section>
 
       <section id="map" className={placeholderClassName}>

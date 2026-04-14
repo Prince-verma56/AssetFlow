@@ -4,10 +4,21 @@ import { Component, Suspense, type ReactNode } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stage, useGLTF } from "@react-three/drei";
 
-function HeroModel() {
-  const scene = useGLTF("/models/MyChar3dModel2.glb");
+// Define the exact path once to prevent mismatch errors
+const MODEL_PATH = "/models/Dronemodel.glb";
 
-  return <primitive object={scene.scene} scale={1.8} position={[0, -1.4, 0]} />;
+function HeroModel() {
+  const { scene } = useGLTF(MODEL_PATH);
+  
+  // scene.clone() is highly recommended to prevent React remount bugs with Three.js
+  return (
+    <primitive 
+      object={scene.clone()} 
+      scale={3.0} 
+      position={[0, -0.2, 0]} 
+      rotation={[0.15, -0.45, 0]} 
+    />
+  );
 }
 
 function ModelFallback() {
@@ -29,9 +40,11 @@ class CanvasErrorBoundary extends Component<{ children: ReactNode }, { hasError:
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex h-full items-center justify-center bg-linear-to-br from-slate-950 to-slate-800 p-6 text-center text-sm text-white/80">
-          Add <code className="mx-1 rounded bg-white/10 px-1.5 py-0.5 text-white">/models/MyChar3dModel2.glb</code> to
-          enable the 3D hero model.
+        <div className="flex h-full flex-col items-center justify-center bg-linear-to-br from-slate-950 to-slate-800 p-6 text-center text-sm text-white/80">
+          <p className="mb-2 font-semibold text-red-400">Model Failed to Load</p>
+          <p>
+            Please ensure <code className="mx-1 rounded bg-white/10 px-1.5 py-0.5 text-white">{MODEL_PATH}</code> exists in your public folder.
+          </p>
         </div>
       );
     }
@@ -47,15 +60,22 @@ export function HeroModelCanvas() {
         <Canvas frameloop="demand" camera={{ position: [0, 1.5, 5], fov: 38 }}>
           <ambientLight intensity={0.6} />
           <Suspense fallback={<ModelFallback />}>
-            <Stage environment="city" intensity={0.6} adjustCamera={false}>
+            <Stage environment="city" intensity={0.8} adjustCamera={false}>
               <HeroModel />
             </Stage>
           </Suspense>
-          <OrbitControls autoRotate autoRotateSpeed={1.8} enableZoom={false} enablePan={false} />
+          <OrbitControls 
+            autoRotate 
+            autoRotateSpeed={1.8} 
+            enableZoom={false} 
+            enablePan={false} 
+            maxPolarAngle={Math.PI / 2} // Prevents camera from going under the floor
+          />
         </Canvas>
       </CanvasErrorBoundary>
     </div>
   );
 }
 
-useGLTF.preload("/models/MyChar3dModel2.glb");
+// Preload the exact same path
+useGLTF.preload(MODEL_PATH);

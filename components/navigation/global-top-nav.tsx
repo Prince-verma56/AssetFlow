@@ -25,6 +25,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import ThemeToggleButton from "@/components/ui/theme-toggle-button";
+import Image from "next/image";
 
 function initials(name: string) {
   return name
@@ -63,7 +64,16 @@ export function GlobalTopNav() {
               <Tractor className="size-5" />
             </span>
             <div className="hidden sm:block">
-              <p className="text-sm font-black tracking-tight">AssetFlow</p>
+              <Link href="/" className="flex items-center gap-2">
+                <Image
+                  src="/logo.png"
+                  alt="AF Logo"
+                  width={40}
+                  height={40}
+                  className="object-contain"
+                />
+                <span className="font-bold text-xl tracking-tight">AssetFlow</span>
+              </Link>
               <p className="text-xs text-muted-foreground">Equipment rentals with live logistics</p>
             </div>
           </Link>

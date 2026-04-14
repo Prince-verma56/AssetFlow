@@ -6,6 +6,7 @@ import { SignInButton, useUser } from "@clerk/nextjs";
 import { MapPinned } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { normalizeRole, roleToDashboard, type ClerkRole } from "@/lib/roles";
+import { useLenisScroll } from "@/components/providers/lenis-provider";
 
 const navItems = [
   { href: "#provide", label: "What We Provide" },
@@ -16,6 +17,7 @@ const navItems = [
 
 export function LandingNavbar() {
   const router = useRouter();
+  const { scrollTo } = useLenisScroll();
   const { isLoaded, isSignedIn, user } = useUser();
   const [dashboardRole, setDashboardRole] = useState<ClerkRole>("renter");
 
@@ -55,10 +57,15 @@ export function LandingNavbar() {
     };
   }, [isLoaded, isSignedIn, user]);
 
+  const handleAnchorClick = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    event.preventDefault();
+    scrollTo(href, -72);
+  };
+
   return (
     <header className="fixed top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 md:px-6">
-        <a href="#hero" className="flex items-center gap-3">
+        <a href="#hero" onClick={(event) => handleAnchorClick(event, "#hero")} className="flex items-center gap-3">
           <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm">
             AF
           </span>
@@ -70,11 +77,20 @@ export function LandingNavbar() {
 
         <nav className="hidden items-center gap-6 text-sm font-medium text-slate-600 lg:flex">
           {navItems.map((item) => (
-            <a key={item.href} href={item.href} className="transition-colors hover:text-slate-950">
+            <a
+              key={item.href}
+              href={item.href}
+              onClick={(event) => handleAnchorClick(event, item.href)}
+              className="transition-colors hover:text-slate-950"
+            >
               {item.label}
             </a>
           ))}
-          <a href="#map" className="flex items-center gap-2 transition-colors hover:text-slate-950">
+          <a
+            href="#map"
+            onClick={(event) => handleAnchorClick(event, "#map")}
+            className="flex items-center gap-2 transition-colors hover:text-slate-950"
+          >
             <span>Map</span>
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-slate-700">Live</span>
           </a>

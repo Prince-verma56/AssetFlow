@@ -8,6 +8,7 @@ import { GlobalTopNav } from "@/components/navigation/global-top-nav";
 import "./globals.css";
 
 import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { LenisProvider } from "@/components/providers/lenis-provider";
 
 export const metadata: Metadata = {
   title: "AssetFlow - AssetFlow Equipment Rental Platform",
@@ -35,12 +36,14 @@ export default function RootLayout({
         }
       >
         <ConvexClientProvider>
-          <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-            <GlobalTopNav />
-            {children}
+          <LenisProvider>
+            <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+              <GlobalTopNav />
+              {children}
 
-            <Toaster />
-          </ThemeProvider>
+              <Toaster />
+            </ThemeProvider>
+          </LenisProvider>
         </ConvexClientProvider>
       </body>
     </html>

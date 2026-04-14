@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLenisScroll } from "@/components/providers/lenis-provider";
 
 type SlideTextButtonProps = {
   href: string;
@@ -17,9 +18,20 @@ export function SlideTextButton({
   variant = "primary",
   className,
 }: SlideTextButtonProps) {
+  const { scrollTo } = useLenisScroll();
+  const isHashLink = href.startsWith("#");
+
   return (
     <Link
       href={href}
+      onClick={
+        isHashLink
+          ? (event) => {
+              event.preventDefault();
+              scrollTo(href, -72);
+            }
+          : undefined
+      }
       className={cn(
         "group relative inline-flex h-14 items-center overflow-hidden rounded-full border px-6 text-sm font-semibold transition-transform duration-300 hover:-translate-y-0.5",
         variant === "primary"

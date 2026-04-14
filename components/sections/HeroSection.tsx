@@ -6,8 +6,8 @@ import { motion } from "framer-motion";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Sparkles, Workflow } from "lucide-react";
-import { SlideTextButton } from "@/components/ui/SlideTextButton";
+import { Sparkles } from "lucide-react";
+import { SlideTextButton } from "@/components/ui/SlideTextButton"; // Ensure this path is correct
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -21,7 +21,7 @@ const HeroModelCanvas = dynamic(
   }
 );
 
-const headingWords = "Web Projects Built for Students, by a Student".split(" ");
+const headingWords = "Rent Heavy Machinery & Tools, Instantly.".split(" ");
 
 export function HeroSection() {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -99,7 +99,7 @@ export function HeroSection() {
             className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-slate-200/80 bg-white/85 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-600 shadow-sm backdrop-blur-sm"
           >
             <Sparkles className="size-3.5 text-cyan-600" />
-            Premium Student Build Lab
+            Secure Equipment Rental Platform
           </motion.div>
 
           <h1
@@ -119,8 +119,7 @@ export function HeroSection() {
             transition={{ duration: 0.65, delay: 0.18 }}
             className="mt-8 max-w-2xl text-lg leading-8 text-slate-600 md:text-xl"
           >
-            A modular launchpad for polished student portfolios, client-ready websites, and ambitious interactive
-            builds with motion, 3D, and crisp product storytelling.
+            Connect with local owners to rent tractors, drones, and power tools. Maximize your asset's ROI or find exactly what you need with secure escrow payments and real-time Mapbox tracking.
           </motion.p>
 
           <motion.div
@@ -129,27 +128,8 @@ export function HeroSection() {
             transition={{ duration: 0.65, delay: 0.28 }}
             className="mt-10 flex flex-wrap gap-4"
           >
-            <SlideTextButton href="#provide" label="Request a Project" />
-            <SlideTextButton href="#community" label="Connect Now" variant="secondary" />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.38 }}
-            className="mt-10 grid max-w-xl gap-3 sm:grid-cols-2"
-          >
-            <div className="rounded-3xl border border-white/70 bg-white/70 p-4 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] backdrop-blur-md">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Shipping Style</p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">Motion-rich, modular, and launch-ready.</p>
-            </div>
-            <div className="rounded-3xl border border-white/70 bg-slate-950 p-4 text-white shadow-[0_18px_45px_-30px_rgba(15,23,42,0.65)]">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">
-                <Workflow className="size-4 text-cyan-300" />
-                Build Flow
-              </div>
-              <p className="mt-2 text-lg font-semibold">Reusable sections first, page assembly second.</p>
-            </div>
+            <SlideTextButton href="/marketplace" label="Browse Equipment" />
+            <SlideTextButton href="/admin" label="List an Asset" variant="secondary" />
           </motion.div>
         </div>
 
