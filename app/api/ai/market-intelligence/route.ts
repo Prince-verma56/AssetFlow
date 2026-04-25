@@ -9,7 +9,7 @@ async function generateOwnerInsight(
   lifetimeEarnings: number,
   recentRentals: Array<{ renterName: string; duration: number }>
 ): Promise<string> {
-  const systemPrompt = `You are AgriRent AI, a market intelligence advisor for agricultural equipment owners. 
+  const systemPrompt = `You are AssetFlow AI, a market intelligence advisor for agricultural equipment owners. 
 Analyze asset rental history and provide actionable, concise insights.
 Your response must be exactly 2 sentences, focused on pricing strategy and demand signals.
 Be specific with numbers when relevant.`;
@@ -65,7 +65,7 @@ async function generateRenterPricingSummary(
   assetAge?: number,
   escrowFee?: number,
 ): Promise<string> {
-  const systemPrompt = `You are AgriRent AI, helping renters understand their dynamic pricing.
+  const systemPrompt = `You are AssetFlow AI, helping renters understand their dynamic pricing.
 Write exactly 2 sentences explaining their booking and discount clearly.
 Mention tenure/age discount only if it applies, and mention escrow briefly if present.
 Be warm, professional, and clear.`;
@@ -106,7 +106,7 @@ Write a 2-sentence summary about their dynamic pricing discount.`;
     const data: any = await response.json();
     return (
       data.choices?.[0]?.message?.content?.trim() ||
-      `Your ${days}-day booking qualifies for smart pricing on AgriRent. The payment stays protected in escrow until return confirmation.`
+      `Your ${days}-day booking qualifies for smart pricing on AssetFlow. The payment stays protected in escrow until return confirmation.`
     );
   } catch (error) {
     console.error("Failed to generate renter summary:", error);

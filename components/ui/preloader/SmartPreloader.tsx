@@ -47,7 +47,7 @@ export const SmartPreloader = ({ type, src }: SmartPreloaderProps) => {
                 {progress}%
               </motion.h1>
               <p className="text-sm uppercase tracking-widest text-zinc-500 mt-4">
-                Loading AgriRent Engine
+                Loading AssetFlow Engine
               </p>
             </div>
           ) : (

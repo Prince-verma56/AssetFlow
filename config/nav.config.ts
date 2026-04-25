@@ -31,7 +31,7 @@ export const BUYER_ITEMS: NavItemConfig[] = [
 ];
 
 export const navConfig: NavConfig = {
-  appName: "AgriRent",
+  appName: "AssetFlow",
   farmerQuickCreateLabel: "List Equipment",
   buyerQuickCreateLabel: "Browse Equipment",
   farmerNav: FARMER_ITEMS,

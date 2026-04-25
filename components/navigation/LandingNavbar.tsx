@@ -34,15 +34,15 @@ export function LandingNavbar() {
     <nav className="fixed top-0 z-40 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-3">
-          <Image 
-            src="/logo.svg" 
-            alt="AgriRent Logo" 
-            width={40} 
-            height={40} 
-            className="size-9 object-contain" 
+          <Image
+            src="/logo.svg"
+            alt="AssetFlow Logo"
+            width={40}
+            height={40}
+            className="size-9 object-contain"
             priority
           />
-          <span className="text-xl font-bold tracking-tight text-foreground">AgriRent</span>
+          <span className="text-xl font-bold tracking-tight text-foreground">AssetFlow</span>
         </Link>
 
         <div className="hidden items-center gap-8 text-sm font-medium text-muted-foreground md:flex">

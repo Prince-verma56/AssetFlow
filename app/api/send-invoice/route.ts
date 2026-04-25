@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-const from = process.env.RESEND_FROM_EMAIL || "AgriRent <onboarding@resend.dev>";
+const from = process.env.RESEND_FROM_EMAIL || "AssetFlow <onboarding@resend.dev>";
 
 function renderInvoiceHtml({
   orderId,
@@ -21,7 +21,7 @@ function renderInvoiceHtml({
     <html>
       <body style="font-family: Arial, sans-serif; background: #f8fafc; color: #111827; padding: 24px;">
         <div style="max-width: 640px; margin: 0 auto; background: white; border-radius: 20px; padding: 32px; border: 1px solid #e5e7eb;">
-          <p style="font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #059669; font-weight: 700;">AgriRent Invoice</p>
+          <p style="font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #059669; font-weight: 700;">AssetFlow Invoice</p>
           <h1 style="margin: 8px 0 20px; font-size: 28px;">Rental Confirmation</h1>
           <div style="display: grid; gap: 12px; margin-bottom: 24px;">
             <div><strong>Order ID:</strong> ${orderId}</div>
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
   const result = await resend.emails.send({
     from,
     to: [body.renterEmail],
-    subject: `AgriRent Invoice ${body.orderId.slice(-8).toUpperCase()}`,
+    subject: `AssetFlow Invoice ${body.orderId.slice(-8).toUpperCase()}`,
     html,
   });
 
@@ -98,7 +98,7 @@ export async function GET(req: Request) {
   return new NextResponse(html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": `attachment; filename="agrirent-invoice-${orderId.slice(-8)}.html"`,
+      "Content-Disposition": `attachment; filename="AssetFlow-invoice-${orderId.slice(-8)}.html"`,
     },
   });
 }

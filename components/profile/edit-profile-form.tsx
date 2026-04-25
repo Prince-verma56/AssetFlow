@@ -150,7 +150,7 @@ export function EditProfileForm({ role }: EditProfileFormProps) {
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle>Editable profile</CardTitle>
-            <CardDescription>These details shape how other people see and contact you on AgriRent.</CardDescription>
+            <CardDescription>These details shape how other people see and contact you on AssetFlow.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5">
             <div className="grid gap-5 md:grid-cols-2">

@@ -74,7 +74,7 @@ export const listByRenter = query({
           name: owner.name,
           email: owner.email,
           avatarUrl: owner.avatarUrl ?? owner.imageUrl,
-          bio: owner.bio ?? "Trusted equipment owner on AgriRent.",
+          bio: owner.bio ?? "Trusted equipment owner on AssetFlow.",
           phone: owner.phone,
           trustScore: owner.trustScore ?? 78,
           location: owner.location ?? (owner.lat !== undefined && owner.lng !== undefined ? { lat: owner.lat, lng: owner.lng } : null),

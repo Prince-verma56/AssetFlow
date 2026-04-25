@@ -26,7 +26,7 @@ export function IdleAssetCalculator() {
             </div>
             <div>
               <CardTitle>Idle Asset ROI Calculator</CardTitle>
-              <CardDescription className="text-xs mt-1">See the immediate financial value of pivoting to the AgriRent model by renting your underutilized equipment.</CardDescription>
+              <CardDescription className="text-xs mt-1">See the immediate financial value of pivoting to the AssetFlow model by renting your underutilized equipment.</CardDescription>
             </div>
           </div>
           <TrendingUp className="size-8 text-emerald-600/50 flex-shrink-0" />
@@ -41,22 +41,22 @@ export function IdleAssetCalculator() {
                 <Label className="text-sm font-semibold">Idle Days per Month</Label>
                 <span className="font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full text-sm">{idleDays[0]} Days</span>
               </div>
-              <Slider 
-                value={idleDays} 
-                onValueChange={setIdleDays} 
-                min={1} 
-                max={30} 
-                step={1} 
-                className="[&>[data-slot=slider-range]]:bg-emerald-500 [&>[data-slot=slider-thumb]]:border-emerald-500" 
+              <Slider
+                value={idleDays}
+                onValueChange={setIdleDays}
+                min={1}
+                max={30}
+                step={1}
+                className="[&>[data-slot=slider-range]]:bg-emerald-500 [&>[data-slot=slider-thumb]]:border-emerald-500"
               />
               <p className="text-xs text-muted-foreground">Adjust days available for rent</p>
             </div>
-            
+
             <div className="space-y-3">
               <Label className="text-sm font-semibold">Daily Rental Rate (₹)</Label>
-              <Input 
-                type="number" 
-                value={dailyRate} 
+              <Input
+                type="number"
+                value={dailyRate}
                 onChange={(e) => setDailyRate(Number(e.target.value) || 0)}
                 className="border-emerald-100 focus-visible:ring-emerald-500 bg-white font-semibold"
               />

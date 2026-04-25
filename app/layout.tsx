@@ -13,7 +13,7 @@ import { LenisProvider } from "@/components/providers/lenis-provider";
 
 export const metadata: Metadata = {
   title: "AssetFlow - AssetFlow Equipment Rental Platform",
-  description: "AgriRent equipment rental platform built with Clerk and Convex",
+  description: "Assetflow equipment rental platform built with Clerk and Convex",
 };
 
 export default function RootLayout({

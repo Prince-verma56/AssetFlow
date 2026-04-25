@@ -86,7 +86,7 @@ export default function OnboardingPage() {
         <div className="mx-auto max-w-2xl text-center">
           <h1 className="text-3xl font-black tracking-tight text-foreground md:text-4xl">Select Your Workspace</h1>
           <p className="mt-3 text-sm leading-7 text-muted-foreground md:text-base">
-            Choose how you want to use AgriRent right now. We’ll save the role and send you to the correct dashboard.
+            Choose how you want to use AssetFlow right now. We’ll save the role and send you to the correct dashboard.
           </p>
         </div>
 

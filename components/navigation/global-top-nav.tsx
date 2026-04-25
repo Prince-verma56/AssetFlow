@@ -60,16 +60,16 @@ export function GlobalTopNav() {
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-3">
           <Link href={role === "owner" ? "/admin" : "/marketplace"} className="flex items-center gap-3">
-            <Image 
-              src="/logo.svg" 
-              alt="AgriRent Logo" 
-              width={40} 
-              height={40} 
-              className="size-10 object-contain drop-shadow-sm" 
+            <Image
+              src="/logo.svg"
+              alt="AssetFlow Logo"
+              width={40}
+              height={40}
+              className="size-10 object-contain drop-shadow-sm"
               priority
             />
             <div className="hidden sm:block">
-              <p className="text-sm font-black tracking-tight">AgriRent</p>
+              <p className="text-sm font-black tracking-tight">AssetFlow</p>
               <p className="text-xs text-muted-foreground">Equipment rentals with live logistics</p>
             </div>
           </Link>

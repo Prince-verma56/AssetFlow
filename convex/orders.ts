@@ -231,7 +231,7 @@ export const createOrder = mutation({
         ? args.quantity
         : Number.parseFloat(String(args.quantity).replace(/[^\d.]/g, "")) || 0;
 
-      const orderId = await ctx.db.insert("orders", {
+    const orderId = await ctx.db.insert("orders", {
       listingId: listing._id,
       buyerId: buyer._id,
       farmerId: listing.farmerId,
@@ -290,13 +290,13 @@ export const getBuyerOrders = query({
       const farmer =
         typeof order.farmerId === "string"
           ? await ctx.db
-              .query("users")
-              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
-              .unique()
+            .query("users")
+            .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
+            .unique()
           : await ctx.db.get(order.farmerId);
       const farmerUser = farmer as Doc<"users"> | null;
-      results.push({ 
-        ...order, 
+      results.push({
+        ...order,
         assetCategory: listing?.assetCategory || "Direct Rental",
         farmerName: farmerUser?.name || "Verified Owner",
         farmerEmail: farmerUser?.email || "contact@farmdirect.com",
@@ -338,9 +338,9 @@ export const getRenterOrdersDetailed = query({
       const owner: Doc<"users"> | null =
         typeof order.farmerId === "string"
           ? await ctx.db
-              .query("users")
-              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
-              .unique()
+            .query("users")
+            .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
+            .unique()
           : ((await ctx.db.get(order.farmerId)) as Doc<"users"> | null);
 
       results.push({
@@ -377,7 +377,7 @@ export const getFarmerOrders = query({
       .withIndex("by_farmer", (q) => q.eq("farmerId", farmer._id))
       .order("desc")
       .take(200);
-      
+
     // Map the listings and buyer details
     const results = [];
     for (const order of orders) {
@@ -385,13 +385,13 @@ export const getFarmerOrders = query({
       const buyer =
         typeof order.buyerId === "string"
           ? await ctx.db
-              .query("users")
-              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.buyerId))
-              .unique()
+            .query("users")
+            .withIndex("by_clerkId", (q) => q.eq("clerkId", order.buyerId))
+            .unique()
           : await ctx.db.get(order.buyerId);
       const buyerUser = buyer as Doc<"users"> | null;
-      results.push({ 
-        ...order, 
+      results.push({
+        ...order,
         assetCategory: listing?.assetCategory || "Direct Rental",
         title: listing?.title ?? listing?.assetCategory ?? "Equipment Rental",
         imageUrl: listing?.imageUrl,
@@ -423,16 +423,16 @@ export const getOrderDetails = query({
       const farmer =
         typeof order.farmerId === "string"
           ? await ctx.db
-              .query("users")
-              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
-              .unique()
+            .query("users")
+            .withIndex("by_clerkId", (q) => q.eq("clerkId", order.farmerId))
+            .unique()
           : await ctx.db.get(order.farmerId);
       const buyer =
         typeof order.buyerId === "string"
           ? await ctx.db
-              .query("users")
-              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.buyerId))
-              .unique()
+            .query("users")
+            .withIndex("by_clerkId", (q) => q.eq("clerkId", order.buyerId))
+            .unique()
           : await ctx.db.get(order.buyerId);
       const farmerUser = farmer as Doc<"users"> | null;
       const buyerUser = buyer as Doc<"users"> | null;
@@ -448,7 +448,7 @@ export const getOrderDetails = query({
         farmerName: farmerUser?.name || "Verified Owner",
         farmerImage: farmerUser?.avatarUrl ?? farmerUser?.imageUrl,
         invoiceUrl: order.invoiceUrl,
-        farmerEmail: farmerUser?.email || "contact@agrirent.com",
+        farmerEmail: farmerUser?.email || "contact@AssetFlow.com",
         buyerName: buyerUser?.name || "Renter",
         buyerEmail: buyerUser?.email || "-",
         trackingTimeline: ensureTrackingTimeline(order),
@@ -486,7 +486,7 @@ export const updateOrderStatus = mutation({
           ? "disputed"
           : args.orderStatus === "delivered"
             ? "completed"
-          : args.orderStatus;
+            : args.orderStatus;
 
     await ctx.db.patch(args.orderId, {
       orderStatus: args.orderStatus,
@@ -661,9 +661,9 @@ export const getActiveFarmerLogistics = query({
       const buyerDoc =
         typeof order.buyerId === "string"
           ? await ctx.db
-              .query("users")
-              .withIndex("by_clerkId", (q) => q.eq("clerkId", order.buyerId))
-              .unique()
+            .query("users")
+            .withIndex("by_clerkId", (q) => q.eq("clerkId", order.buyerId))
+            .unique()
           : await ctx.db.get(order.buyerId);
       const buyerUser = buyerDoc as Doc<"users"> | null;
 
