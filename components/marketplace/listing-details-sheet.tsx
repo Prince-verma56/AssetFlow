@@ -693,10 +693,12 @@ export function ListingDetailsSheet({
                         numberOfMonths={1}
                         disabled={[
                           { before: new Date(new Date().setHours(0, 0, 0, 0)) },
-                          ...(availability?.blockedDates?.map((r: { from: number; to: number }) => ({
-                            from: new Date(r.from),
-                            to: new Date(r.to),
-                          })) ?? []),
+                          ...(availability?.success
+                            ? availability.data.blockedDates.map((r: { from: number; to: number }) => ({
+                                from: new Date(r.from),
+                                to: new Date(r.to),
+                              }))
+                            : []),
                         ]}
                       />
                     </PopoverContent>
