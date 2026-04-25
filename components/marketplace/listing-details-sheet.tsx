@@ -704,7 +704,7 @@ export function ListingDetailsSheet({
                     </PopoverContent>
                   </Popover>
                   <p className="text-xs text-slate-400">
-                    Minimum: {minDays} day{minDays === 1 ? "" : "s"}
+                    Minimum: {minDays} day{minDays === 1 ? "" : "s"} 
                   </p>
                 </div>
 
